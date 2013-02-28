@@ -1,55 +1,47 @@
 #include "../include/core.h"
 #include "core.h"
-
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
 #include <vector>
+#include <list>
+#include <queue>
+#include <unistd.h>
 #include <pthread.h>
-
-#define NUM_THREADS 4
 
 using namespace std;
 
+#define NUM_THREADS 2
+
 /* Global Data */
 volatile bool done;
-
-pthread_t threads[NUM_THREADS];
-
-vector<Document> pendingDocs;                   ///< Pending documents
-pthread_mutex_t  pendingDocs_mutex;
-pthread_cond_t   pendingDocs_condition;
-
-vector<Document> availableDocs;                     ///< Ready documents
-pthread_mutex_t  readyDocs_mutex;
-pthread_cond_t   readyDocs_condition;
-
-vector<Query> queries;                          ///< Active queries
-
+pthread_t           threads[NUM_THREADS];
+queue<PendingDoc>   pendingDocs;                   ///< Pending documents
+pthread_mutex_t     pendingDocs_mutex;
+pthread_cond_t      pendingDocs_condition;
+queue<DocResult>    availableDocs;                 ///< Ready documents
+pthread_mutex_t     availableDocs_mutex;
+pthread_cond_t      availableDocs_condition;
+vector<Query>       queries;                       ///< Active queries
 
 /* Library Functions */
 ErrorCode InitializeIndex()
 {
-    done = false;
-
+    /* Create the threads, which will enter the waiting state. */
     pthread_mutex_init(&pendingDocs_mutex, NULL);
     pthread_cond_init (&pendingDocs_condition, NULL);
+    pthread_mutex_init(&availableDocs_mutex, NULL);
+    pthread_cond_init (&availableDocs_condition, NULL);
 
-    pthread_mutex_init(&readyDocs_mutex, NULL);
-    pthread_cond_init (&readyDocs_condition, NULL);
-
-    /* Create the threads, which will enter the waiting state. */
-    int t;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
+    done = false;
+    int t;
     for (t=0; t< NUM_THREADS; t++) {
-        int rc = pthread_create(&threads[t], &attr, ThreadFunc, (void *)t);
-        if (rc) {
-            printf("ERROR; return code from pthread_create() is %d\n", rc);
-            exit(-1);
-        }
+        int rc = pthread_create(&threads[t], &attr, ThreadFunction, (void *)t);
+        if (rc) { printf("ERROR; return code from pthread_create() is %d\n", rc); exit(-1);}
     }
 
     return EC_SUCCESS;
@@ -57,15 +49,14 @@ ErrorCode InitializeIndex()
 
 ErrorCode DestroyIndex()
 {
-    done = true;
-
     pthread_mutex_lock(&pendingDocs_mutex);
     pthread_cond_broadcast(&pendingDocs_condition);
     pthread_mutex_unlock(&pendingDocs_mutex);
 
-    int i;
-    for (i=0; i<NUM_THREADS; i++) {
-        pthread_join(threads[i], NULL);
+    done = true;
+    int t;
+    for (t=0; t<NUM_THREADS; t++) {
+        pthread_join(threads[t], NULL);
     }
 
     return EC_SUCCESS;
@@ -78,14 +69,12 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
     strcpy(query.str, query_str);
     query.match_type=match_type;
     query.match_dist=match_dist;
-    // Add this query to the active query set
     queries.push_back(query);
     return EC_SUCCESS;
 }
 
 ErrorCode EndQuery(QueryID query_id)
 {
-    // Remove this query from the active query set
     unsigned int i, n=queries.size();
     for(i=0;i<n;i++)
     {
@@ -100,11 +89,121 @@ ErrorCode EndQuery(QueryID query_id)
 
 ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
 {
-    char cur_doc_str[MAX_DOC_LENGTH];
-    strcpy(cur_doc_str, doc_str);
+    char *cur_doc_str;
 
-    unsigned int i, n=queries.size();
-    vector<unsigned int> query_ids;
+    //int ret = posix_memalign((void**)&cur_doc_str, getpagesize(), (1+strlen(doc_str))*sizeof(char));
+
+    cur_doc_str = (char *) malloc((1+strlen(doc_str)));
+
+    if (!cur_doc_str){
+        printf("Could not allocate memory. \n");
+        exit(-1);
+    }
+
+    strcpy(cur_doc_str, doc_str);
+    PendingDoc newDoc;
+    newDoc.id=doc_id;
+    newDoc.str=cur_doc_str;
+
+    pthread_mutex_lock(&pendingDocs_mutex);
+    while ( pendingDocs.size() > (unsigned)NUM_THREADS )
+        pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
+
+    pendingDocs.push(newDoc);
+    printf("DocID: %u pushed \n", newDoc.id); fflush(stdout);
+    pthread_cond_broadcast(&pendingDocs_condition);
+    pthread_mutex_unlock(&pendingDocs_mutex);
+
+    return EC_SUCCESS;
+}
+
+ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_query_ids)
+{
+    /* Get the first undeliverd result from "availableDocs" and return it */
+    pthread_mutex_lock(&availableDocs_mutex);
+    while ( availableDocs.empty() )
+        pthread_cond_wait(&availableDocs_condition, &availableDocs_mutex);
+
+    *p_doc_id=0;
+    *p_num_res=0;
+    *p_query_ids=0;
+
+    if(availableDocs.empty())
+        return EC_NO_AVAIL_RES;
+
+    DocResult res = availableDocs.front();
+    availableDocs.pop();
+
+    *p_doc_id = res.id;
+    *p_num_res = res.num_res;
+    *p_query_ids = res.query_ids;
+
+    printf("DocID: %u returned \n", *p_doc_id); fflush(stdout);
+
+    pthread_cond_broadcast(&availableDocs_condition);
+    pthread_mutex_unlock(&availableDocs_mutex);
+    return EC_SUCCESS;
+}
+
+/* Our Functions */
+void *ThreadFunction(void *param)
+{
+    long myThreadId = (long)param;
+
+    while (1)
+    {
+        /* Wait untill new doc has arrived or done is set. */
+        pthread_mutex_lock(&pendingDocs_mutex);
+        while ( !done && pendingDocs.empty() )
+            pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
+
+        if (done) { pthread_mutex_unlock(&pendingDocs_mutex); break; }
+
+        /* Get a document from the pending list */
+        PendingDoc doc = pendingDocs.front();
+        pendingDocs.pop();
+        printf("DocID: %u retrieved by Thread_%ld for matching \n", doc.id, myThreadId); fflush(stdout);
+        pthread_cond_broadcast(&pendingDocs_condition);
+        pthread_mutex_unlock(&pendingDocs_mutex);
+
+        /* Process the document */
+        list<unsigned int> matched_query_ids;
+        matched_query_ids.clear();
+        Match(doc.str, matched_query_ids);
+        free(doc.str);
+
+        DocResult result;
+        result.id=doc.id;
+        result.num_res=matched_query_ids.size();
+        result.query_ids=0;
+
+        unsigned int i;
+        list<unsigned int>::const_iterator qi;
+        if(result.num_res)
+            result.query_ids=(unsigned int*)malloc(result.num_res*sizeof(unsigned int));
+
+        qi = matched_query_ids.begin();
+        for(i=0;i<result.num_res;i++)
+            result.query_ids[i] = *qi++;
+
+        /* Store the result */
+        pthread_mutex_lock(&availableDocs_mutex);
+        availableDocs.push(result);
+        pthread_cond_broadcast(&availableDocs_condition);
+        pthread_mutex_unlock(&availableDocs_mutex);
+    }
+
+    printf("Thread#%2ld: Exiting. \n", myThreadId); fflush(stdout);
+    return NULL;
+}
+
+void Match(char *cur_doc_str, list<unsigned int> &query_ids)
+{
+    unsigned int i;
+    unsigned int n=queries.size();
+
+    char cur_query_word [MAX_WORD_LENGTH+1];
+    char cur_doc_word [MAX_WORD_LENGTH+1];
 
     /* Iterate on all active queries to compare them with this new document */
     for(i=0;i<n;i++)
@@ -115,44 +214,48 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
         int iq=0;
         while(quer->str[iq] && matching_query)
         {
+            /* Skip any leading spaces */
             while(quer->str[iq]==' ') iq++;
             if(!quer->str[iq]) break;
             char* qword=&quer->str[iq];
 
+            /* Find next space delimiter */
             int lq=iq;
             while(quer->str[iq] && quer->str[iq]!=' ') iq++;
             char qt=quer->str[iq];
-            quer->str[iq]=0;
+            /// PROBLEM X-) quer->str[iq]=0; // Put a zero here to create zero terminated string in place
             lq=iq-lq;
+            memcpy(cur_query_word, qword, lq);
+            cur_query_word[lq] = 0;
 
             bool matching_word=false;
 
             int id=0;
             while(cur_doc_str[id] && !matching_word)
             {
+                /* Skip any leading spaces */
                 while(cur_doc_str[id]==' ') id++;
                 if(!cur_doc_str[id]) break;
                 char* dword=&cur_doc_str[id];
 
+                /* Find next space delimiter */
                 int ld=id;
                 while(cur_doc_str[id] && cur_doc_str[id]!=' ') id++;
                 char dt=cur_doc_str[id];
-                cur_doc_str[id]=0;
-
+                /// PROBLEM X-) cur_doc_str[id]=0; // Put a zero here to create zero terminated string in place
                 ld=id-ld;
+                memcpy(cur_doc_word, dword, ld);
+                cur_doc_word[ld] = 0;
 
-                if(quer->match_type==MT_EXACT_MATCH)
-                {
-                    if(strcmp(qword, dword)==0) matching_word=true;
+                if(quer->match_type==MT_EXACT_MATCH) {
+                    if(strcmp(cur_query_word, cur_doc_word)==0) matching_word=true;
                 }
-                else if(quer->match_type==MT_HAMMING_DIST)
-                {
-                    unsigned int num_mismatches=HammingDistance(qword, lq, dword, ld);
+                else if(quer->match_type==MT_HAMMING_DIST) {
+                    unsigned int num_mismatches=HammingDistance(cur_query_word, lq, cur_doc_word, ld);
                     if(num_mismatches<=quer->match_dist) matching_word=true;
                 }
-                else if(quer->match_type==MT_EDIT_DIST)
-                {
-                    unsigned int edit_dist=EditDistance(qword, lq, dword, ld);
+                else if(quer->match_type==MT_EDIT_DIST) {
+                    unsigned int edit_dist=EditDistance(cur_query_word, lq, cur_doc_word, ld);
                     if(edit_dist<=quer->match_dist) matching_word=true;
                 }
 
@@ -175,100 +278,15 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
         }
     }
 
-    Document doc;
-    doc.doc_id=doc_id;
-    doc.num_res=query_ids.size();
-    doc.query_ids=0;
-
-    if(doc.num_res)
-        doc.query_ids=(unsigned int*)malloc(doc.num_res*sizeof(unsigned int));
-
-    for(i=0;i<doc.num_res;i++)
-        doc.query_ids[i]=query_ids[i];
-
-    /* Add this result to the set of undelivered results */
-    availableDocs.push_back(doc);
-
-    return EC_SUCCESS;
-}
-
-ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_query_ids)
-{
-    /* Get the first undeliverd result from "availableDocs" and return it */
-    pthread_mutex_lock(&readyDocs_mutex);
-    while ( availableDocs.size() == 0 ) {
-        pthread_cond_wait(&readyDocs_condition, &readyDocs_mutex);
-    }
-
-    *p_doc_id=0;
-    *p_num_res=0;
-    *p_query_ids=0;
-
-    if(availableDocs.size()==0)
-        return EC_NO_AVAIL_RES;
-
-    *p_doc_id=availableDocs[0].doc_id;
-    *p_num_res=availableDocs[0].num_res;
-    *p_query_ids=availableDocs[0].query_ids;
-    availableDocs.erase(availableDocs.begin());
-
-    pthread_mutex_unlock(&readyDocs_mutex);
-    return EC_SUCCESS;
-}
-
-void *ThreadFunc(void *param)
-{
-    long id = (long)param;
-
-    while (1)
-    {
-        /* [1]. Wait untill new doc has arrived or done is set. */
-        pthread_mutex_lock(&pendingDocs_mutex);
-        while ( !done && pendingDocs.size() == 0 ) {
-            printf("Thread#%2ld: Going to sleep. \n", id); fflush(stdout);
-            pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
-            printf("Thread#%2ld: Woke up. \n", id); fflush(stdout);
-        }
-
-        if (done) {
-            pthread_mutex_unlock(&pendingDocs_mutex);
-            break;
-        }
-
-        /* [2]. Reserve a document from the pending list... */
-        //...
-        //...
-        //...
-
-        /* [3]. Unlock the pending docs mutex */
-        pthread_mutex_unlock(&pendingDocs_mutex);
-
-        /* [4]. Process the document */
-        //...
-        //...
-        //...
-
-        /* [5]. Put the results in the ready list */
-        //...
-        //...
-        //...
-
-    }
-
-    printf("Thread#%2ld: Exiting. \n", id); fflush(stdout);
-    return NULL;
+    return;
 }
 
 /* Hepler Functions */
-/**
- * Computes edit distance between a null-terminated string "a" with length "na"
- * and a null-terminated string "b" with length "nb"
- */
 int EditDistance(char* a, int na, char* b, int nb)
 {
     int oo=0x7FFFFFFF;
 
-    static int T[2][MAX_WORD_LENGTH+1];
+    int T[2][MAX_WORD_LENGTH+1];
 
     int ia, ib;
 
@@ -318,10 +336,6 @@ int EditDistance(char* a, int na, char* b, int nb)
     return ret;
 }
 
-/**
- * Computes Hamming distance between a null-terminated string "a" with length "na"
- *  and a null-terminated string "b" with length "nb"
- */
 unsigned int HammingDistance(char* a, int na, char* b, int nb)
 {
     int j, oo=0x7FFFFFFF;
