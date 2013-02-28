@@ -7,18 +7,20 @@
 #include <vector>
 #include <pthread.h>
 
-#define NUM_THREAD 4
+#define NUM_THREADS 4
 
 using namespace std;
 
 /* Global Data */
-pthread_t threads[NUM_THREAD];
+volatile bool done;
+
+pthread_t threads[NUM_THREADS];
 
 vector<Document> pendingDocs;                   ///< Pending documents
 pthread_mutex_t  pendingDocs_mutex;
 pthread_cond_t   pendingDocs_condition;
 
-vector<Document> readyDocs;                     ///< Ready documents
+vector<Document> availableDocs;                     ///< Ready documents
 pthread_mutex_t  readyDocs_mutex;
 pthread_cond_t   readyDocs_condition;
 
@@ -28,6 +30,8 @@ vector<Query> queries;                          ///< Active queries
 /* Library Functions */
 ErrorCode InitializeIndex()
 {
+    done = false;
+
     pthread_mutex_init(&pendingDocs_mutex, NULL);
     pthread_cond_init (&pendingDocs_condition, NULL);
 
@@ -40,7 +44,7 @@ ErrorCode InitializeIndex()
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-    for (t=0; t< NUM_THREAD; t++) {
+    for (t=0; t< NUM_THREADS; t++) {
         int rc = pthread_create(&threads[t], &attr, ThreadFunc, (void *)t);
         if (rc) {
             printf("ERROR; return code from pthread_create() is %d\n", rc);
@@ -53,6 +57,17 @@ ErrorCode InitializeIndex()
 
 ErrorCode DestroyIndex()
 {
+    done = true;
+
+    pthread_mutex_lock(&pendingDocs_mutex);
+    pthread_cond_broadcast(&pendingDocs_condition);
+    pthread_mutex_unlock(&pendingDocs_mutex);
+
+    int i;
+    for (i=0; i<NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
     return EC_SUCCESS;
 }
 
@@ -91,7 +106,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     unsigned int i, n=queries.size();
     vector<unsigned int> query_ids;
 
-    // Iterate on all active queries to compare them with this new document
+    /* Iterate on all active queries to compare them with this new document */
     for(i=0;i<n;i++)
     {
         bool matching_query=true;
@@ -164,27 +179,83 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     doc.doc_id=doc_id;
     doc.num_res=query_ids.size();
     doc.query_ids=0;
-    if(doc.num_res) doc.query_ids=(unsigned int*)malloc(doc.num_res*sizeof(unsigned int));
-    for(i=0;i<doc.num_res;i++) doc.query_ids[i]=query_ids[i];
-    // Add this result to the set of undelivered results
-    readyDocs.push_back(doc);
+
+    if(doc.num_res)
+        doc.query_ids=(unsigned int*)malloc(doc.num_res*sizeof(unsigned int));
+
+    for(i=0;i<doc.num_res;i++)
+        doc.query_ids[i]=query_ids[i];
+
+    /* Add this result to the set of undelivered results */
+    availableDocs.push_back(doc);
 
     return EC_SUCCESS;
 }
 
 ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_query_ids)
 {
-    // Get the first undeliverd resuilt from "readyDocs" and return it
-    *p_doc_id=0; *p_num_res=0; *p_query_ids=0;
-    if(readyDocs.size()==0) return EC_NO_AVAIL_RES;
-    *p_doc_id=readyDocs[0].doc_id; *p_num_res=readyDocs[0].num_res; *p_query_ids=readyDocs[0].query_ids;
-    readyDocs.erase(readyDocs.begin());
+    /* Get the first undeliverd result from "availableDocs" and return it */
+    pthread_mutex_lock(&readyDocs_mutex);
+    while ( availableDocs.size() == 0 ) {
+        pthread_cond_wait(&readyDocs_condition, &readyDocs_mutex);
+    }
+
+    *p_doc_id=0;
+    *p_num_res=0;
+    *p_query_ids=0;
+
+    if(availableDocs.size()==0)
+        return EC_NO_AVAIL_RES;
+
+    *p_doc_id=availableDocs[0].doc_id;
+    *p_num_res=availableDocs[0].num_res;
+    *p_query_ids=availableDocs[0].query_ids;
+    availableDocs.erase(availableDocs.begin());
+
+    pthread_mutex_unlock(&readyDocs_mutex);
     return EC_SUCCESS;
 }
 
 void *ThreadFunc(void *param)
 {
+    long id = (long)param;
 
+    while (1)
+    {
+        /* [1]. Wait untill new doc has arrived or done is set. */
+        pthread_mutex_lock(&pendingDocs_mutex);
+        while ( !done && pendingDocs.size() == 0 ) {
+            printf("Thread#%2ld: Going to sleep. \n", id); fflush(stdout);
+            pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
+            printf("Thread#%2ld: Woke up. \n", id); fflush(stdout);
+        }
+
+        if (done) {
+            pthread_mutex_unlock(&pendingDocs_mutex);
+            break;
+        }
+
+        /* [2]. Reserve a document from the pending list... */
+        //...
+        //...
+        //...
+
+        /* [3]. Unlock the pending docs mutex */
+        pthread_mutex_unlock(&pendingDocs_mutex);
+
+        /* [4]. Process the document */
+        //...
+        //...
+        //...
+
+        /* [5]. Put the results in the ready list */
+        //...
+        //...
+        //...
+
+    }
+
+    printf("Thread#%2ld: Exiting. \n", id); fflush(stdout);
     return NULL;
 }
 
