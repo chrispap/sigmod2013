@@ -1,115 +1,60 @@
 #include "../include/core.h"
+#include "core.h"
+
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
 #include <vector>
+#include <pthread.h>
+
+#define NUM_THREAD 4
 
 using namespace std;
 
-/* Struct definitions */
-/**
- *  Keeps all information related to an active query
- */
-struct Query
-{
-    QueryID query_id;
-    char str[MAX_QUERY_LENGTH];
-    MatchType match_type;
-    unsigned int match_dist;
-};
-
-/**
- * Keeps all query ID results associated with a dcoument
- */
-struct Document
-{
-    DocID doc_id;
-    unsigned int num_res;
-    QueryID* query_ids;
-};
-
 /* Global Data */
-vector<Query> queries;
-vector<Document> docs;
+pthread_t threads[NUM_THREAD];
 
-/* Hepler Functions */
-/**
- * Computes edit distance between a null-terminated string "a" with length "na"
- * and a null-terminated string "b" with length "nb"
- */
-int EditDistance(char* a, int na, char* b, int nb)
-{
-    int oo=0x7FFFFFFF;
+vector<Document> pendingDocs;                   ///< Pending documents
+pthread_mutex_t  pendingDocs_mutex;
+pthread_cond_t   pendingDocs_condition;
 
-    static int T[2][MAX_WORD_LENGTH+1];
+vector<Document> readyDocs;                     ///< Ready documents
+pthread_mutex_t  readyDocs_mutex;
+pthread_cond_t   readyDocs_condition;
 
-    int ia, ib;
+vector<Query> queries;                          ///< Active queries
 
-    int cur=0;
-    ia=0;
-
-    for(ib=0;ib<=nb;ib++)
-        T[cur][ib]=ib;
-
-    cur=1-cur;
-
-    for(ia=1;ia<=na;ia++)
-    {
-        for(ib=0;ib<=nb;ib++)
-            T[cur][ib]=oo;
-
-        int ib_st=0;
-        int ib_en=nb;
-
-        if(ib_st==0)
-        {
-            ib=0;
-            T[cur][ib]=ia;
-            ib_st++;
-        }
-
-        for(ib=ib_st;ib<=ib_en;ib++)
-        {
-            int ret=oo;
-
-            int d1=T[1-cur][ib]+1;
-            int d2=T[cur][ib-1]+1;
-            int d3=T[1-cur][ib-1]; if(a[ia-1]!=b[ib-1]) d3++;
-
-            if(d1<ret) ret=d1;
-            if(d2<ret) ret=d2;
-            if(d3<ret) ret=d3;
-
-            T[cur][ib]=ret;
-        }
-
-        cur=1-cur;
-    }
-
-    int ret=T[1-cur][nb];
-
-    return ret;
-}
-
-/**
- * Computes Hamming distance between a null-terminated string "a" with length "na"
- *  and a null-terminated string "b" with length "nb"
- */
-unsigned int HammingDistance(char* a, int na, char* b, int nb)
-{
-    int j, oo=0x7FFFFFFF;
-    if(na!=nb) return oo;
-
-    unsigned int num_mismatches=0;
-    for(j=0;j<na;j++) if(a[j]!=b[j]) num_mismatches++;
-
-    return num_mismatches;
-}
 
 /* Library Functions */
-ErrorCode InitializeIndex(){return EC_SUCCESS;}
+ErrorCode InitializeIndex()
+{
+    pthread_mutex_init(&pendingDocs_mutex, NULL);
+    pthread_cond_init (&pendingDocs_condition, NULL);
 
-ErrorCode DestroyIndex(){return EC_SUCCESS;}
+    pthread_mutex_init(&readyDocs_mutex, NULL);
+    pthread_cond_init (&readyDocs_condition, NULL);
+
+    /* Create the threads, which will enter the waiting state. */
+    int t;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
+    for (t=0; t< NUM_THREAD; t++) {
+        int rc = pthread_create(&threads[t], &attr, ThreadFunc, (void *)t);
+        if (rc) {
+            printf("ERROR; return code from pthread_create() is %d\n", rc);
+            exit(-1);
+        }
+    }
+
+    return EC_SUCCESS;
+}
+
+ErrorCode DestroyIndex()
+{
+    return EC_SUCCESS;
+}
 
 ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_type, unsigned int match_dist)
 {
@@ -222,17 +167,97 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     if(doc.num_res) doc.query_ids=(unsigned int*)malloc(doc.num_res*sizeof(unsigned int));
     for(i=0;i<doc.num_res;i++) doc.query_ids[i]=query_ids[i];
     // Add this result to the set of undelivered results
-    docs.push_back(doc);
+    readyDocs.push_back(doc);
 
     return EC_SUCCESS;
 }
 
 ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_query_ids)
 {
-    // Get the first undeliverd resuilt from "docs" and return it
+    // Get the first undeliverd resuilt from "readyDocs" and return it
     *p_doc_id=0; *p_num_res=0; *p_query_ids=0;
-    if(docs.size()==0) return EC_NO_AVAIL_RES;
-    *p_doc_id=docs[0].doc_id; *p_num_res=docs[0].num_res; *p_query_ids=docs[0].query_ids;
-    docs.erase(docs.begin());
+    if(readyDocs.size()==0) return EC_NO_AVAIL_RES;
+    *p_doc_id=readyDocs[0].doc_id; *p_num_res=readyDocs[0].num_res; *p_query_ids=readyDocs[0].query_ids;
+    readyDocs.erase(readyDocs.begin());
     return EC_SUCCESS;
+}
+
+void *ThreadFunc(void *param)
+{
+
+    return NULL;
+}
+
+/* Hepler Functions */
+/**
+ * Computes edit distance between a null-terminated string "a" with length "na"
+ * and a null-terminated string "b" with length "nb"
+ */
+int EditDistance(char* a, int na, char* b, int nb)
+{
+    int oo=0x7FFFFFFF;
+
+    static int T[2][MAX_WORD_LENGTH+1];
+
+    int ia, ib;
+
+    int cur=0;
+    ia=0;
+
+    for(ib=0;ib<=nb;ib++)
+        T[cur][ib]=ib;
+
+    cur=1-cur;
+
+    for(ia=1;ia<=na;ia++)
+    {
+        for(ib=0;ib<=nb;ib++)
+            T[cur][ib]=oo;
+
+        int ib_st=0;
+        int ib_en=nb;
+
+        if(ib_st==0)
+        {
+            ib=0;
+            T[cur][ib]=ia;
+            ib_st++;
+        }
+
+        for(ib=ib_st;ib<=ib_en;ib++)
+        {
+            int ret=oo;
+
+            int d1=T[1-cur][ib]+1;
+            int d2=T[cur][ib-1]+1;
+            int d3=T[1-cur][ib-1]; if(a[ia-1]!=b[ib-1]) d3++;
+
+            if(d1<ret) ret=d1;
+            if(d2<ret) ret=d2;
+            if(d3<ret) ret=d3;
+
+            T[cur][ib]=ret;
+        }
+
+        cur=1-cur;
+    }
+
+    int ret=T[1-cur][nb];
+
+    return ret;
+}
+
+/**
+ * Computes Hamming distance between a null-terminated string "a" with length "na"
+ *  and a null-terminated string "b" with length "nb"
+ */
+unsigned int HammingDistance(char* a, int na, char* b, int nb)
+{
+    int j, oo=0x7FFFFFFF;
+    if(na!=nb) return oo;
+
+    unsigned int num_mismatches=0;
+    for(j=0;j<na;j++) if(a[j]!=b[j]) num_mismatches++;
+
+    return num_mismatches;
 }

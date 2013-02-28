@@ -25,10 +25,10 @@
 #          Fuad Jamour <fuad.jamour@kaust.edu.sa>
 #
 # Current version: 1.0 (initial release)
-	
+
 
 # Build targets (your implementation targets should go in IMPL_O)
-TEST_O=test_driver/test.o 
+TEST_O=test_driver/test.o
 IMPL_O=our_impl/core.o
 
 # Compiler flags
@@ -48,7 +48,7 @@ LIBRARY=core
 all: $(PROGRAMS)
 
 lib: $(IMPL_O)
-	$(CXX) $(CXXFLAGS) -shared -o lib$(LIBRARY).so $(IMPL_O)
+	$(CXX) $(CXXFLAGS) -shared -o lib$(LIBRARY).so $(IMPL_O) $(LDFLAGS)
 
 testdriver: lib $(TEST_O)
 	$(CXX) $(CXXFLAGS) -o testdriver $(TEST_O) ./lib$(LIBRARY).so
