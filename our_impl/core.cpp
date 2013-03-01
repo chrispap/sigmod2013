@@ -11,7 +11,7 @@
 
 using namespace std;
 
-#define NUM_THREADS 7
+#define NUM_THREADS 11
 
 /* Global Data */
 volatile bool done;
@@ -152,39 +152,44 @@ void *ThreadFunction(void *param)
 
     while (1)
     {
-        /* Wait untill new doc has arrived or done is set. */
+        /* Wait untill new doc has arrived or "done" is set. */
         pthread_mutex_lock(&pendingDocs_mutex);
-        while ( !done && pendingDocs.empty() )
+        while (!done && pendingDocs.empty())
             pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
 
-        if (done) { pthread_mutex_unlock(&pendingDocs_mutex); break; }
+        if (done){
+            pthread_mutex_unlock(&pendingDocs_mutex);
+            break;
+        }
 
         /* Get a document from the pending list */
         PendingDoc doc = pendingDocs.front();
         pendingDocs.pop();
-        fprintf(stderr, "DocID: %u retrieved by Thread_%ld for matching \n", doc.id, myThreadId); fflush(stdout);
+        fprintf(stderr, "DocID: %u retrieved by Thread_%ld for matching \n", doc.id, myThreadId);
+        fflush(stdout);
         pthread_cond_broadcast(&pendingDocs_condition);
         pthread_mutex_unlock(&pendingDocs_mutex);
 
         /* Process the document */
-        list<unsigned int> matched_query_ids;
+        list<QueryID> matched_query_ids;
         matched_query_ids.clear();
         Match(doc.str, matched_query_ids);
         free(doc.str);
 
+        /* Create the result array */
         DocResult result;
         result.id=doc.id;
         result.num_res=matched_query_ids.size();
         result.query_ids=0;
 
-        unsigned int i;
-        list<unsigned int>::const_iterator qi;
-        if(result.num_res)
-            result.query_ids=(unsigned int*)malloc(result.num_res*sizeof(unsigned int));
-
-        qi = matched_query_ids.begin();
-        for(i=0;i<result.num_res;i++)
-            result.query_ids[i] = *qi++;
+        if(result.num_res){
+            unsigned int i;
+            list<unsigned int>::const_iterator qi;
+            result.query_ids=(QueryID*)malloc(result.num_res*sizeof(QueryID));
+            qi = matched_query_ids.begin();
+            for(i=0;i<result.num_res;i++)
+                result.query_ids[i] = *qi++;
+        }
 
         /* Store the result */
         pthread_mutex_lock(&availableDocs_mutex);
