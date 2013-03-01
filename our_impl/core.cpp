@@ -11,7 +11,7 @@
 
 using namespace std;
 
-#define NUM_THREADS 2
+#define NUM_THREADS 7
 
 /* Global Data */
 volatile bool done;
@@ -110,7 +110,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
         pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
 
     pendingDocs.push(newDoc);
-    printf("DocID: %u pushed \n", newDoc.id); fflush(stdout);
+    fprintf(stderr, "DocID: %u pushed \n", newDoc.id); fflush(stdout);
     pthread_cond_broadcast(&pendingDocs_condition);
     pthread_mutex_unlock(&pendingDocs_mutex);
 
@@ -138,7 +138,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     *p_num_res = res.num_res;
     *p_query_ids = res.query_ids;
 
-    printf("DocID: %u returned \n", *p_doc_id); fflush(stdout);
+    fprintf(stderr, "DocID: %u returned \n", *p_doc_id); fflush(stdout);
 
     pthread_cond_broadcast(&availableDocs_condition);
     pthread_mutex_unlock(&availableDocs_mutex);
@@ -162,7 +162,7 @@ void *ThreadFunction(void *param)
         /* Get a document from the pending list */
         PendingDoc doc = pendingDocs.front();
         pendingDocs.pop();
-        printf("DocID: %u retrieved by Thread_%ld for matching \n", doc.id, myThreadId); fflush(stdout);
+        fprintf(stderr, "DocID: %u retrieved by Thread_%ld for matching \n", doc.id, myThreadId); fflush(stdout);
         pthread_cond_broadcast(&pendingDocs_condition);
         pthread_mutex_unlock(&pendingDocs_mutex);
 
