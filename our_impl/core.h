@@ -5,7 +5,7 @@ using namespace std;
 /* Struct definitions */
 struct Query
 {
-    QueryID query_id;
+    QueryID id;
     char str[MAX_QUERY_LENGTH];
     MatchType match_type;
     unsigned int match_dist;

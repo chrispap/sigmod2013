@@ -65,7 +65,7 @@ ErrorCode DestroyIndex()
 ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_type, unsigned int match_dist)
 {
     Query query;
-    query.query_id=query_id;
+    query.id=query_id;
     strcpy(query.str, query_str);
     query.match_type=match_type;
     query.match_dist=match_dist;
@@ -78,7 +78,7 @@ ErrorCode EndQuery(QueryID query_id)
     unsigned int i, n=queries.size();
     for(i=0;i<n;i++)
     {
-        if(queries[i].query_id==query_id)
+        if(queries[i].id==query_id)
         {
             queries.erase(queries.begin()+i);
             break;
@@ -279,7 +279,7 @@ void Match(char *cur_doc_str, list<unsigned int> &query_ids)
         if(matching_query)
         {
             // This query matches the document
-            query_ids.push_back(quer->query_id);
+            query_ids.push_back(quer->id);
         }
     }
 
