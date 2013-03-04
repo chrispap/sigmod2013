@@ -9,6 +9,12 @@ struct Query
     char str[MAX_QUERY_LENGTH];
     MatchType match_type;
     unsigned int match_dist;
+
+    /* Constructors */
+    Query (QueryID _id) : id(_id) {}
+
+    /* Operator overloadings */
+    bool operator< (const Query &q) const { return id<q.id? true: false;}
 };
 
 struct DocResult

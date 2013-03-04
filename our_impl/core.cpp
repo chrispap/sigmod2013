@@ -1,28 +1,30 @@
 #include "../include/core.h"
 #include "core.h"
-#include <cstring>
+
 #include <cstdlib>
 #include <cstdio>
-#include <vector>
-#include <list>
+#include <cstring>
+#include <set>
 #include <queue>
-#include <unistd.h>
 #include <pthread.h>
 
 using namespace std;
 
-#define NUM_THREADS 11
+#define NUM_THREADS 12
 
 /* Global Data */
-volatile bool done;
-pthread_t           threads[NUM_THREADS];
-queue<PendingDoc>   pendingDocs;                   ///< Pending documents
-pthread_mutex_t     pendingDocs_mutex;
-pthread_cond_t      pendingDocs_condition;
-queue<DocResult>    availableDocs;                 ///< Ready documents
-pthread_mutex_t     availableDocs_mutex;
-pthread_cond_t      availableDocs_condition;
-vector<Query>       queries;                       ///< Active queries
+set<Query>          activeQueries;              ///< Active queries
+volatile bool done;                             ///< Used to singal the threads to exit
+pthread_t           threads[NUM_THREADS];       ///< Thread objects
+
+queue<PendingDoc>   pendingDocs;                ///< Pending documents
+pthread_mutex_t     pendingDocs_mutex;          ///<  -//-
+pthread_cond_t      pendingDocs_condition;      ///<  -//-
+
+queue<DocResult>    availableDocs;              ///< Ready documents
+pthread_mutex_t     availableDocs_mutex;        ///<  -//-
+pthread_cond_t      availableDocs_condition;    ///<  -//-
+
 
 /* Library Functions */
 ErrorCode InitializeIndex()
@@ -38,7 +40,7 @@ ErrorCode InitializeIndex()
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
     done = false;
-    int t;
+    long t;
     for (t=0; t< NUM_THREADS; t++) {
         int rc = pthread_create(&threads[t], &attr, ThreadFunction, (void *)t);
         if (rc) { printf("ERROR; return code from pthread_create() is %d\n", rc); exit(-1);}
@@ -64,26 +66,19 @@ ErrorCode DestroyIndex()
 
 ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_type, unsigned int match_dist)
 {
-    Query query;
-    query.id=query_id;
+    Query query(query_id);
     strcpy(query.str, query_str);
     query.match_type=match_type;
     query.match_dist=match_dist;
-    queries.push_back(query);
+
+    /* Insert to the Actve Query Set */
+    activeQueries.insert(activeQueries.end(), query);
     return EC_SUCCESS;
 }
 
 ErrorCode EndQuery(QueryID query_id)
 {
-    unsigned int i, n=queries.size();
-    for(i=0;i<n;i++)
-    {
-        if(queries[i].id==query_id)
-        {
-            queries.erase(queries.begin()+i);
-            break;
-        }
-    }
+    activeQueries.erase(query_id);
     return EC_SUCCESS;
 }
 
@@ -97,7 +92,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
 
     if (!cur_doc_str){
         printf("Could not allocate memory. \n");
-        exit(-1);
+        return EC_FAIL;
     }
 
     strcpy(cur_doc_str, doc_str);
@@ -204,31 +199,29 @@ void *ThreadFunction(void *param)
 
 void Match(char *cur_doc_str, list<unsigned int> &query_ids)
 {
-    unsigned int i;
-    unsigned int n=queries.size();
-
     char cur_query_word [MAX_WORD_LENGTH+1];
     char cur_doc_word [MAX_WORD_LENGTH+1];
 
     /* Iterate on all active queries to compare them with this new document */
-    for(i=0;i<n;i++)
+    set<Query>::iterator qi;
+    for(qi=activeQueries.begin(); qi!=activeQueries.end(); ++qi)
     {
         bool matching_query=true;
-        Query* quer=&queries[i];
+        Query quer = *qi;
 
         int iq=0;
-        while(quer->str[iq] && matching_query)
+        while(quer.str[iq] && matching_query)
         {
             /* Skip any leading spaces */
-            while(quer->str[iq]==' ') iq++;
-            if(!quer->str[iq]) break;
-            char* qword=&quer->str[iq];
+            while(quer.str[iq]==' ') iq++;
+            if(!quer.str[iq]) break;
+            char* qword=&quer.str[iq];
 
             /* Find next space delimiter */
             int lq=iq;
-            while(quer->str[iq] && quer->str[iq]!=' ') iq++;
-            char qt=quer->str[iq];
-            /// PROBLEM X-) quer->str[iq]=0; // Put a zero here to create zero terminated string in place
+            while(quer.str[iq] && quer.str[iq]!=' ') iq++;
+            char qt=quer.str[iq];
+            /// PROBLEM X-) quer.str[iq]=0; // Put a zero here to create zero terminated string in place
             lq=iq-lq;
             memcpy(cur_query_word, qword, lq);
             cur_query_word[lq] = 0;
@@ -252,22 +245,22 @@ void Match(char *cur_doc_str, list<unsigned int> &query_ids)
                 memcpy(cur_doc_word, dword, ld);
                 cur_doc_word[ld] = 0;
 
-                if(quer->match_type==MT_EXACT_MATCH) {
+                if(quer.match_type==MT_EXACT_MATCH) {
                     if(strcmp(cur_query_word, cur_doc_word)==0) matching_word=true;
                 }
-                else if(quer->match_type==MT_HAMMING_DIST) {
+                else if(quer.match_type==MT_HAMMING_DIST) {
                     unsigned int num_mismatches=HammingDistance(cur_query_word, lq, cur_doc_word, ld);
-                    if(num_mismatches<=quer->match_dist) matching_word=true;
+                    if(num_mismatches<=quer.match_dist) matching_word=true;
                 }
-                else if(quer->match_type==MT_EDIT_DIST) {
+                else if(quer.match_type==MT_EDIT_DIST) {
                     unsigned int edit_dist=EditDistance(cur_query_word, lq, cur_doc_word, ld);
-                    if(edit_dist<=quer->match_dist) matching_word=true;
+                    if(edit_dist<=quer.match_dist) matching_word=true;
                 }
 
                 cur_doc_str[id]=dt;
             }
 
-            quer->str[iq]=qt;
+            quer.str[iq]=qt;
 
             if(!matching_word)
             {
@@ -279,7 +272,7 @@ void Match(char *cur_doc_str, list<unsigned int> &query_ids)
         if(matching_query)
         {
             // This query matches the document
-            query_ids.push_back(quer->id);
+            query_ids.push_back(quer.id);
         }
     }
 
