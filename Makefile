@@ -29,13 +29,13 @@
 
 # Build targets (your implementation targets should go in IMPL_O)
 TEST_O=test_driver/test.o
-IMPL_O=our_impl/core.o
+IMPL_O=our_impl/core.o our_impl/worddatabase.o
 
 # Compiler flags
 CC  = gcc
 CXX = g++
 CFLAGS=-O3 -fPIC -Wall -g -I. -I./include
-CXXFLAGS=$(CFLAGS)
+CXXFLAGS= -std=c++11 $(CFLAGS)
 LDFLAGS=-lpthread
 
 # The programs that will be built
@@ -48,7 +48,7 @@ LIBRARY=core
 all: $(PROGRAMS)
 
 lib: $(IMPL_O)
-	$(CXX) -std=c++11 $(CXXFLAGS) -shared -o lib$(LIBRARY).so $(IMPL_O) $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -shared -o lib$(LIBRARY).so $(IMPL_O) $(LDFLAGS)
 
 testdriver: lib $(TEST_O)
 	$(CXX) $(CXXFLAGS) -o testdriver $(TEST_O) ./lib$(LIBRARY).so
