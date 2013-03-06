@@ -2,6 +2,11 @@
 
 WordDatabase::WordDatabase()
 {
+    /* Create the data structures */
+    wordMap.max_load_factor (0.01);
+    wordMap.reserve(10000);
+    printf("Bucet_count = %ld \n", wordMap.bucket_count());
+    exit(0);
     /* Create the threads, which will enter the waiting state. */
     pthread_mutex_init(&pendingDocs_mutex, NULL);
     pthread_cond_init (&pendingDocs_condition, NULL);
@@ -11,9 +16,8 @@ WordDatabase::WordDatabase()
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     done = false;
-    long t;
 
-    for (t=0; t< NUM_THREADS; t++) {
+    for (long t=0; t< NUM_THREADS; t++) {
         ThreadParams *tp = (ThreadParams*) malloc(sizeof(ThreadParams));
         tp->wdb = this;
         tp->thread_id = t;
