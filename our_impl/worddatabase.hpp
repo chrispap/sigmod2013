@@ -41,7 +41,6 @@ struct PendingDoc
 
 class WordDatabase
 {
-
 public:
     WordDatabase();
     ~WordDatabase();
@@ -51,17 +50,17 @@ public:
     ErrorCode getNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_query_ids);
 
 private:
-    volatile bool       done;                       ///< Used by threads to exit
-    set<Query>          activeQueries;              ///< Active queries
-    pthread_t           threads[NUM_THREADS];       ///< Thread objects
-    queue<PendingDoc>   pendingDocs;                ///< Pending documents
-    pthread_mutex_t     pendingDocs_mutex;          ///<
-    pthread_cond_t      pendingDocs_condition;      ///<
-    queue<DocResult>    availableDocs;              ///< Ready documents
-    pthread_mutex_t     availableDocs_mutex;        ///<
-    pthread_cond_t      availableDocs_condition;    ///<
+    volatile bool       done;
+    set<Query>          activeQueries;
+    pthread_t           threads[NUM_THREADS];
+    queue<PendingDoc>   pendingDocs;
+    pthread_mutex_t     pendingDocs_mutex;
+    pthread_cond_t      pendingDocs_condition;
+    queue<DocResult>    availableDocs;
+    pthread_mutex_t     availableDocs_mutex;
+    pthread_cond_t      availableDocs_condition;
 
-    void  Match(char *cur_doc_str, list<unsigned int> &query_ids);
+    void  matchDocument(char *cur_doc_str, list<unsigned int> &query_ids);
 
     static void* threadFunction(void *param);
     static int EditDistance(char* a, int na, char* b, int nb);

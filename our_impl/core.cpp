@@ -1,5 +1,5 @@
 #include <core.h>
-#include "worddatabase.h"
+#include "worddatabase.hpp"
 
 using namespace std;
 

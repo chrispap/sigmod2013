@@ -1,4 +1,4 @@
-#include "worddatabase.h"
+#include "worddatabase.hpp"
 
 WordDatabase::WordDatabase()
 {
@@ -12,12 +12,12 @@ WordDatabase::WordDatabase()
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     done = false;
     long t;
-    static ThreadParams thparam[NUM_THREADS];
 
     for (t=0; t< NUM_THREADS; t++) {
-        thparam[t].wdb = this;
-        thparam[t].thread_id = t;
-        int rc = pthread_create(&threads[t], &attr, threadFunction, &thparam[t]);
+        ThreadParams *tp = (ThreadParams*) malloc(sizeof(ThreadParams));
+        tp->wdb = this;
+        tp->thread_id = t;
+        int rc = pthread_create(&threads[t], &attr, threadFunction, tp);
         if (rc) {
             printf("ERROR; return code from pthread_create() is %d\n in attempt to create Thread#%ld", rc, t);
             exit(-1);
@@ -143,7 +143,7 @@ void* WordDatabase::threadFunction(void *param)
         /* Process the document */
         list<QueryID> matched_query_ids;
         matched_query_ids.clear();
-        wdb->Match(doc.str, matched_query_ids);
+        wdb->matchDocument(doc.str, matched_query_ids);
         free(doc.str);
 
         /* Create the result array */
@@ -172,7 +172,7 @@ void* WordDatabase::threadFunction(void *param)
     return NULL;
 }
 
-void WordDatabase::Match(char *cur_doc_str, list<unsigned int> &query_ids)
+void WordDatabase::matchDocument(char *cur_doc_str, list<unsigned int> &query_ids)
 {
     char cur_query_word [MAX_WORD_LENGTH+1];
     char cur_doc_word [MAX_WORD_LENGTH+1];
