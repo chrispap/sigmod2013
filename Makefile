@@ -34,9 +34,9 @@ IMPL_O=our_impl/core.o
 # Compiler flags
 CC  = gcc
 CXX = g++
-CFLAGS=-O3 -fPIC -Wall -g -I. -I./include
-CXXFLAGS=$(CFLAGS)
-LDFLAGS=-lpthread
+CFLAGS= -O0 -fPIC -Wall -g -I. -I./include
+CXXFLAGS= -std=c++11 $(CFLAGS)
+LDFLAGS= -lpthread
 
 # The programs that will be built
 PROGRAMS=testdriver
