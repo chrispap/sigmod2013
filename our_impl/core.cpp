@@ -20,13 +20,13 @@ static unsigned myHash(const char *c1, const char *c2);
 static bool wordsEqual(const char *c1, const char *c2, const char *txt);
 
 /* Definitions */
-#define NUM_THREADS         1
-#define myHash_EXP          10                          ///< eg: 3
-#define myHash_SIZE         (1<<myHash_EXP)             ///< eg: 2^3   = 8 = 0000 0000 0000 1000
-#define myHash_MASK         (myHash_SIZE-1)             ///< eg: 2^3-1 = 7 = 0000 0000 0000 0111
+#define NUM_THREADS         8
+#define HASH_EXP            25                          ///< eg: 3
+#define HASH_SIZE           (1<<HASH_EXP)               ///< eg: 2^3   = 8 = 0000 0000 0000 1000
+#define HASH_MASK           (HASH_SIZE-1)               ///< eg: 2^3-1 = 7 = 0000 0000 0000 0111
 
 /* Global Data */
-static Word*                wdb[myHash_SIZE];           ///< Here store pointers to every word encountered
+static Word*                wdb[HASH_SIZE];             ///< Here store pointers to every word encountered
 static map<QueryID,Query>   activeQueries;              ///< Active queries
 static queue<PendingDoc>    pendingDocs;                ///< Pending documents
 static queue<DocResult>     availableDocs;              ///< Ready documents
@@ -79,7 +79,7 @@ ErrorCode DestroyIndex()
 
 ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_type, unsigned int match_dist)
 {
-    /*DEBUG!!!*/ if (match_type != MT_EXACT_MATCH) return EC_SUCCESS;
+
 
     Query new_query;
     const char *c1, *c2;
@@ -90,7 +90,8 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
     for (c1=c2;*c2;c1=c2+1) {                                   // For each query word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
         unsigned i = myHash(c1, c2);                            // Calculate the myHash for this word
-        while (wdb[i] && !wordsEqual(c1, c2, wdb[i]->txt)) i++; // Resolve any conflicts
+        while (wdb[i] && !wordsEqual(c1, c2, wdb[i]->txt))      // Resolve any conflicts
+             i = (i+1) & HASH_MASK;
         if (!wdb[i]) wdb[i] = new Word(c1, c2);
         wdb[i]->matchingQueries.insert(query_id);
         new_query.words[num_words] = wdb[i];
@@ -135,7 +136,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
         pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
 
     pendingDocs.push(newDoc);
-    fprintf(stderr, "DocID: %u pushed \n", newDoc.id); fflush(stdout);
+    ////fprintf(stderr, "DocID: %u pushed \n", newDoc.id); fflush(stdout);
     pthread_cond_broadcast(&pendingDocs_condition);
     pthread_mutex_unlock(&pendingDocs_mutex);
 
@@ -163,7 +164,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     *p_num_res = res.numRes;
     *p_query_ids = res.queryIDs;
 
-    fprintf(stderr, "DocID: %u returned \n", *p_doc_id); fflush(stdout);
+    //fprintf(stderr, "DocID: %u returned \n", *p_doc_id); fflush(stdout);
 
     pthread_cond_broadcast(&availableDocs_condition);
     pthread_mutex_unlock(&availableDocs_mutex);
@@ -190,7 +191,7 @@ void* ThreadFunc(void *param)
         /* Get a document from the pending list */
         PendingDoc doc = pendingDocs.front();
         pendingDocs.pop();
-        fprintf(stderr, "DocID: %u retrieved by Thread_%ld for matching \n", doc.id, myThreadId);
+        //fprintf(stderr, "DocID: %u retrieved by Thread_%ld for matching \n", doc.id, myThreadId);
         fflush(stdout);
         pthread_cond_broadcast(&pendingDocs_condition);
         pthread_mutex_unlock(&pendingDocs_mutex);
@@ -223,7 +224,7 @@ void* ThreadFunc(void *param)
         pthread_mutex_unlock(&availableDocs_mutex);
     }
 
-    printf("Thread#%2ld: Exiting. \n", myThreadId); fflush(stdout);
+    //fprintf(stderr, "Thread#%2ld: Exiting. \n", myThreadId); fflush(stdout);
     return NULL;
 }
 
@@ -231,7 +232,7 @@ unsigned myHash(const char *c1, const char *c2)
 {
     unsigned val = 0;
     while (c1!=c2) val = ((*c1++) + 61 * val);
-    val=val%myHash_SIZE;
+    val=val%HASH_SIZE;
     return val;
 }
 
@@ -245,7 +246,8 @@ void Match(char *doc_str, set<unsigned int> &matchingQueries)
     for (c1=c2;*c2;c1=c2+1) {
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
         unsigned i = myHash(c1, c2);                            // Calculate the myHash for this word
-        while (wdb[i] && !wordsEqual(c1, c2, wdb[i]->txt)) i++; // Skip any conflicts
+        while (wdb[i] && !wordsEqual(c1, c2, wdb[i]->txt))      // Skip any conflicts
+            i = (i+1) & HASH_MASK;
         if (!wdb[i]) continue;                                  // H leksi den yparxei sto TABLE
 
         for (auto &q : wdb[i]->matchingQueries)
