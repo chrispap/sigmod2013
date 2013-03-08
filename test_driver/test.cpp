@@ -148,13 +148,13 @@ void TestSigmod(const char* test_file_str)
                     }
                 }
 
-                if(0 && flag_error)
+                if(flag_error)
                 {
                     printf("The call to GetNextAvailRes() returned incorrect result for document ID %u.\n", doc_id);
                     printf("Your answer is       : "); for(j=0;j<(int)num_res;j++) {if(j)printf(" "); printf("%u", query_ids[j]);} printf("\n");
                     printf("The correct answer is: "); for(j=0;j<(int)cur_results_size[doc_id-first_result];j++) {if(j)printf(" "); printf("%u", cur_results[doc_id-first_result][j]);} printf("\n");
                     fflush(NULL);
-                    return;
+                    //~ return;
                 }
 
                 cur_results_ret[doc_id-first_result]=true;

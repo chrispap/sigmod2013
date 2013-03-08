@@ -48,7 +48,7 @@ LIBRARY=core
 all: $(PROGRAMS)
 
 lib: $(IMPL_O)
-	$(CXX) -std=c++11 $(CXXFLAGS) -shared -o lib$(LIBRARY).so $(IMPL_O) $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -shared -o lib$(LIBRARY).so $(IMPL_O) $(LDFLAGS)
 
 testdriver: lib $(TEST_O)
 	$(CXX) $(CXXFLAGS) -o testdriver $(TEST_O) ./lib$(LIBRARY).so

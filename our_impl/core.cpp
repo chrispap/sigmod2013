@@ -56,7 +56,7 @@ ErrorCode InitializeIndex()
     long t;
     for (t=0; t< NUM_THREADS; t++) {
         int rc = pthread_create(&threads[t], &attr, ThreadFunc, (void *)t);
-        if (rc) { printf("ERROR; return code from pthread_create() is %d\n", rc); exit(-1);}
+        if (rc) { fprintf(stderr, "ERROR; return code from pthread_create() is %d\n", rc); exit(-1);}
     }
 
     return EC_SUCCESS;
@@ -83,7 +83,7 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 
     Query new_query;
     const char *c1, *c2;
-    char num_words=0;
+    int num_words=0;
 
     c2 = query_str;
     while(*c2==' ') ++c2;                                       // Skip any spaces
@@ -93,7 +93,7 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
         while (wdb[i] && !wordsEqual(c1, c2, wdb[i]->txt))      // Resolve any conflicts
              i = (i+1) & HASH_MASK;
         if (!wdb[i]) wdb[i] = new Word(c1, c2);
-        wdb[i]->matchingQueries.insert(query_id);
+        wdb[i]->exactMatchingQueries.insert(query_id);
         new_query.words[num_words] = wdb[i];
         num_words++;
     }
@@ -112,7 +112,7 @@ ErrorCode EndQuery(QueryID query_id)
 {
     auto qer = activeQueries.find(query_id);
     for (int i=0; i<qer->second.numWords; i++)
-        qer->second.words[i]->matchingQueries.erase(query_id);
+        qer->second.words[i]->exactMatchingQueries.erase(query_id);
     activeQueries.erase(qer);
     return EC_SUCCESS;
 }
@@ -122,7 +122,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     char *cur_doc_str = (char *) malloc((1+strlen(doc_str)));
 
     if (!cur_doc_str){
-        printf("Could not allocate memory. \n");
+        fprintf(stderr, "Could not allocate memory. \n");
         return EC_FAIL;
     }
 
@@ -136,7 +136,6 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
         pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
 
     pendingDocs.push(newDoc);
-    ////fprintf(stderr, "DocID: %u pushed \n", newDoc.id); fflush(stdout);
     pthread_cond_broadcast(&pendingDocs_condition);
     pthread_mutex_unlock(&pendingDocs_mutex);
 
@@ -164,8 +163,6 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     *p_num_res = res.numRes;
     *p_query_ids = res.queryIDs;
 
-    //fprintf(stderr, "DocID: %u returned \n", *p_doc_id); fflush(stdout);
-
     pthread_cond_broadcast(&availableDocs_condition);
     pthread_mutex_unlock(&availableDocs_mutex);
     return EC_SUCCESS;
@@ -174,7 +171,8 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 /* Our Functions */
 void* ThreadFunc(void *param)
 {
-    long myThreadId = (long)param;
+    long myThreadId = (long) param;
+    fprintf(stderr, "Thread#%2ld: Starting. \n", myThreadId); fflush(stdout);
 
     while (1)
     {
@@ -191,8 +189,6 @@ void* ThreadFunc(void *param)
         /* Get a document from the pending list */
         PendingDoc doc = pendingDocs.front();
         pendingDocs.pop();
-        //fprintf(stderr, "DocID: %u retrieved by Thread_%ld for matching \n", doc.id, myThreadId);
-        fflush(stdout);
         pthread_cond_broadcast(&pendingDocs_condition);
         pthread_mutex_unlock(&pendingDocs_mutex);
 
@@ -224,7 +220,7 @@ void* ThreadFunc(void *param)
         pthread_mutex_unlock(&availableDocs_mutex);
     }
 
-    //fprintf(stderr, "Thread#%2ld: Exiting. \n", myThreadId); fflush(stdout);
+    fprintf(stderr, "Thread#%2ld: Exiting. \n", myThreadId); fflush(stdout);
     return NULL;
 }
 
@@ -236,7 +232,7 @@ unsigned myHash(const char *c1, const char *c2)
     return val;
 }
 
-void Match(char *doc_str, set<unsigned int> &matchingQueries)
+void Match(char *doc_str, set<unsigned int> &exactMatchingQueries)
 {
     map<QueryID,set<Word *>> query_stats;
 
@@ -250,13 +246,13 @@ void Match(char *doc_str, set<unsigned int> &matchingQueries)
             i = (i+1) & HASH_MASK;
         if (!wdb[i]) continue;                                  // H leksi den yparxei sto TABLE
 
-        for (auto &q : wdb[i]->matchingQueries)
+        for (auto &q : wdb[i]->exactMatchingQueries)
             query_stats[q].insert(wdb[i]);
     }
 
     for (auto &x : query_stats){
         if (x.second.size() == (unsigned) activeQueries[x.first].numWords) {
-            matchingQueries.insert(x.first);
+            exactMatchingQueries.insert(x.first);
         }
     }
 

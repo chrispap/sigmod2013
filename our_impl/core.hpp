@@ -20,14 +20,13 @@ struct PendingDoc
 struct Word
 {
     char txt[MAX_WORD_LENGTH+1];
-    set<QueryID> matchingQueries;
+    set<QueryID> exactMatchingQueries;
 
-    Word (const char *c1, const char *c2) {int i=0; while (c1!=c2) txt[i++]=*c1++; txt[i]=0;}
+    Word (const char *c1, const char *c2) {int i=0; while (c1!=c2) txt[i++]=*c1++; txt[i]='\0';}
 };
 
 struct Query
 {
-    QueryID     id;
     MatchType   type;
     char        dist;
     char        numWords;
@@ -35,7 +34,7 @@ struct Query
 };
 
 /* Function prototypes */
-void *ThreadFunc    (void *param);
-void  Match         (char *cur_doc_str, set<QueryID> &query_ids);
 int   EditDist      (char* a, int na, char* b, int nb);
 int   HammingDist   (char* a, int na, char* b, int nb);
+void  Match         (char *cur_doc_str, set<QueryID> &query_ids);
+void* ThreadFunc    (void *param);
