@@ -3,59 +3,61 @@
 
 #include <cstdio>
 #include <cstdlib>
-
-#include <csignal>
-
 #include <cstring>
-#include <map>
-#include <unordered_map>
-#include <set>
 #include <queue>
+#include <map>
+#include <set>
+#include <unordered_map>
 #include <pthread.h>
 
 using namespace std;
 
-/* Prototypes */
-static unsigned myHash(const char *c1, const char *c2);
-static bool wordsEqual(const char *c1, const char *c2, const char *txt);
+/* Function prototypes */
+static unsigned myHash      (const char *c1, const char *c2);
+static void* ThreadFunc     (void *param);
+static void  Match          (char *doc_str, set<QueryID> &query_ids);
+static bool  wordsEqual     (const char *c1, const char *c2, const char *txt);
+static int   EditDist       (Word *wa, Word *wb);
+static int   HammingDist    (Word *wa, Word *wb);
 
 /* Definitions */
 #define NUM_THREADS         8
 #define HASH_EXP            25                          ///< eg: 3
-#define HASH_SIZE           (1<<HASH_EXP)               ///< eg: 2^3   = 8 = 0000 0000 0000 1000
-#define HASH_MASK           (HASH_SIZE-1)               ///< eg: 2^3-1 = 7 = 0000 0000 0000 0111
+#define HASH_SIZE           (1<<HASH_EXP)               ///< eg: 2^3   = 8 = 00001000
+#define HASH_MASK           (HASH_SIZE-1)               ///< eg: 2^3-1 = 7 = 00000111
 
 /* Global Data */
-static Word*                wdb[HASH_SIZE];             ///< Here store pointers to every word encountered
-static map<QueryID,Query>   activeQueries;              ///< Active queries
-static queue<PendingDoc>    pendingDocs;                ///< Pending documents
-static queue<DocResult>     availableDocs;              ///< Ready documents
+static Word*                mWdb[HASH_SIZE];            ///< Here store pointers to e v e r y single word encountered !!!
+static map<QueryID,Query>   mActiveQueries;             ///< Active Query IDs
+static set<Word*, LenComp>  mActiveApproxWords;         ///< Active words for approximate matcing
+static queue<PendingDoc>    mPendingDocs;               ///< Pending Documents
+static queue<DocResult>     mAvailableDocs;             ///< Ready Documents
 
 /* Global data for threading */
-static volatile bool        done;                       ///< Used to singal the threads to exit
-static pthread_t            threads[NUM_THREADS];       ///<
-static pthread_mutex_t      pendingDocs_mutex;          ///<
-static pthread_cond_t       pendingDocs_condition;      ///<
-static pthread_mutex_t      availableDocs_mutex;        ///<
-static pthread_cond_t       availableDocs_condition;    ///<
+static volatile bool        mDone;                      ///< Used to singal the mThreads to exit
+static pthread_t            mThreads[NUM_THREADS];      ///< Thread objects
+static pthread_mutex_t      mPendingDocs_mutex;         ///< Protect the access to pending Documents
+static pthread_cond_t       mPendingDocs_condition;     ///<
+static pthread_mutex_t      mAvailableDocs_mutex;       ///< Protect the access to ready Documents
+static pthread_cond_t       mAvailableDocs_condition;   ///<
 
 /* Library Functions */
 ErrorCode InitializeIndex()
 {
-    /* Create the threads, which will enter the waiting state. */
-    pthread_mutex_init(&pendingDocs_mutex, NULL);
-    pthread_cond_init (&pendingDocs_condition, NULL);
-    pthread_mutex_init(&availableDocs_mutex, NULL);
-    pthread_cond_init (&availableDocs_condition, NULL);
+    /* Create the mThreads, which will enter the waiting state. */
+    pthread_mutex_init(&mPendingDocs_mutex, NULL);
+    pthread_cond_init (&mPendingDocs_condition, NULL);
+    pthread_mutex_init(&mAvailableDocs_mutex, NULL);
+    pthread_cond_init (&mAvailableDocs_condition, NULL);
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-    done = false;
+    mDone = false;
     long t;
     for (t=0; t< NUM_THREADS; t++) {
-        int rc = pthread_create(&threads[t], &attr, ThreadFunc, (void *)t);
+        int rc = pthread_create(&mThreads[t], &attr, ThreadFunc, (void *)t);
         if (rc) { fprintf(stderr, "ERROR; return code from pthread_create() is %d\n", rc); exit(-1);}
     }
 
@@ -64,14 +66,14 @@ ErrorCode InitializeIndex()
 
 ErrorCode DestroyIndex()
 {
-    pthread_mutex_lock(&pendingDocs_mutex);
-    pthread_cond_broadcast(&pendingDocs_condition);
-    pthread_mutex_unlock(&pendingDocs_mutex);
+    pthread_mutex_lock(&mPendingDocs_mutex);
+    pthread_cond_broadcast(&mPendingDocs_condition);
+    pthread_mutex_unlock(&mPendingDocs_mutex);
 
-    done = true;
+    mDone = true;
     int t;
     for (t=0; t<NUM_THREADS; t++) {
-        pthread_join(threads[t], NULL);
+        pthread_join(mThreads[t], NULL);
     }
 
     return EC_SUCCESS;
@@ -79,8 +81,6 @@ ErrorCode DestroyIndex()
 
 ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_type, unsigned int match_dist)
 {
-
-
     Query new_query;
     const char *c1, *c2;
     int num_words=0;
@@ -89,31 +89,39 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
     while(*c2==' ') ++c2;                                       // Skip any spaces
     for (c1=c2;*c2;c1=c2+1) {                                   // For each query word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
-        unsigned i = myHash(c1, c2);                            // Calculate the myHash for this word
-        while (wdb[i] && !wordsEqual(c1, c2, wdb[i]->txt))      // Resolve any conflicts
+        unsigned i = myHash(c1, c2);                            // Calculate the hash for this word
+        while (mWdb[i] && !wordsEqual(c1, c2, mWdb[i]->txt))    // Resolve any conflicts
              i = (i+1) & HASH_MASK;
-        if (!wdb[i]) wdb[i] = new Word(c1, c2);
-        wdb[i]->exactMatchingQueries.insert(query_id);
-        new_query.words[num_words] = wdb[i];
+        if (!mWdb[i]) mWdb[i] = new Word(c1, c2);               // Create the word if it doesn't exist
+
+        /* Now  that we have the word in the wordbase
+         * we need to update the word's data structures
+         * for this new query in which the word exists */
+
+        mWdb[i]->querySet[match_type].insert(query_id);         // Update the appropriate query set based on the match_type
+        new_query.words[num_words] = mWdb[i];                   // Add the word to the query
+        if (match_type != MT_EXACT_MATCH)
+            mActiveApproxWords.insert(mWdb[i]);                 // Add the word to the set with the approximate words
+
         num_words++;
     }
 
-    if (num_words) {
-        new_query.type = match_type;
-        new_query.dist = match_dist;
-        new_query.numWords = num_words;
-        activeQueries[query_id] = new_query;
-    }
+    new_query.type = match_type;
+    new_query.dist = match_dist;
+    new_query.numWords = num_words;
+    mActiveQueries[query_id] = new_query;
 
     return EC_SUCCESS;
 }
 
 ErrorCode EndQuery(QueryID query_id)
 {
-    auto qer = activeQueries.find(query_id);
-    for (int i=0; i<qer->second.numWords; i++)
-        qer->second.words[i]->exactMatchingQueries.erase(query_id);
-    activeQueries.erase(qer);
+    auto del_query_it = mActiveQueries.find(query_id);
+    auto del_query = del_query_it->second;
+
+    for (int i=0; i<del_query.numWords; i++)
+        del_query.words[i]->querySet[del_query.type].erase(query_id);
+    mActiveQueries.erase(del_query_it);
     return EC_SUCCESS;
 }
 
@@ -131,40 +139,40 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     newDoc.id=doc_id;
     newDoc.str=cur_doc_str;
 
-    pthread_mutex_lock(&pendingDocs_mutex);
-    while ( pendingDocs.size() > (unsigned)NUM_THREADS )
-        pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
+    pthread_mutex_lock(&mPendingDocs_mutex);
+    while ( mPendingDocs.size() > (unsigned)NUM_THREADS )
+        pthread_cond_wait(&mPendingDocs_condition, &mPendingDocs_mutex);
 
-    pendingDocs.push(newDoc);
-    pthread_cond_broadcast(&pendingDocs_condition);
-    pthread_mutex_unlock(&pendingDocs_mutex);
+    mPendingDocs.push(newDoc);
+    pthread_cond_broadcast(&mPendingDocs_condition);
+    pthread_mutex_unlock(&mPendingDocs_mutex);
 
     return EC_SUCCESS;
 }
 
 ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_query_ids)
 {
-    /* Get the first undeliverd result from "availableDocs" and return it */
-    pthread_mutex_lock(&availableDocs_mutex);
-    while ( availableDocs.empty() )
-        pthread_cond_wait(&availableDocs_condition, &availableDocs_mutex);
+    /* Get the first undeliverd result from "mAvailableDocs" and return it */
+    pthread_mutex_lock(&mAvailableDocs_mutex);
+    while ( mAvailableDocs.empty() )
+        pthread_cond_wait(&mAvailableDocs_condition, &mAvailableDocs_mutex);
 
     *p_doc_id=0;
     *p_num_res=0;
     *p_query_ids=0;
 
-    if(availableDocs.empty())
+    if(mAvailableDocs.empty())
         return EC_NO_AVAIL_RES;
 
-    DocResult res = availableDocs.front();
-    availableDocs.pop();
+    DocResult res = mAvailableDocs.front();
+    mAvailableDocs.pop();
 
     *p_doc_id = res.docID;
     *p_num_res = res.numRes;
     *p_query_ids = res.queryIDs;
 
-    pthread_cond_broadcast(&availableDocs_condition);
-    pthread_mutex_unlock(&availableDocs_mutex);
+    pthread_cond_broadcast(&mAvailableDocs_condition);
+    pthread_mutex_unlock(&mAvailableDocs_mutex);
     return EC_SUCCESS;
 }
 
@@ -176,21 +184,21 @@ void* ThreadFunc(void *param)
 
     while (1)
     {
-        /* Wait untill new doc has arrived or "done" is set. */
-        pthread_mutex_lock(&pendingDocs_mutex);
-        while (!done && pendingDocs.empty())
-            pthread_cond_wait(&pendingDocs_condition, &pendingDocs_mutex);
+        /* Wait untill new doc has arrived or "mDone" is set. */
+        pthread_mutex_lock(&mPendingDocs_mutex);
+        while (!mDone && mPendingDocs.empty())
+            pthread_cond_wait(&mPendingDocs_condition, &mPendingDocs_mutex);
 
-        if (done){
-            pthread_mutex_unlock(&pendingDocs_mutex);
+        if (mDone){
+            pthread_mutex_unlock(&mPendingDocs_mutex);
             break;
         }
 
         /* Get a document from the pending list */
-        PendingDoc doc = pendingDocs.front();
-        pendingDocs.pop();
-        pthread_cond_broadcast(&pendingDocs_condition);
-        pthread_mutex_unlock(&pendingDocs_mutex);
+        PendingDoc doc = mPendingDocs.front();
+        mPendingDocs.pop();
+        pthread_cond_broadcast(&mPendingDocs_condition);
+        pthread_mutex_unlock(&mPendingDocs_mutex);
 
         /* Process the document */
         set<QueryID> matched_query_ids;
@@ -214,10 +222,10 @@ void* ThreadFunc(void *param)
         }
 
         /* Store the result */
-        pthread_mutex_lock(&availableDocs_mutex);
-        availableDocs.push(result);
-        pthread_cond_broadcast(&availableDocs_condition);
-        pthread_mutex_unlock(&availableDocs_mutex);
+        pthread_mutex_lock(&mAvailableDocs_mutex);
+        mAvailableDocs.push(result);
+        pthread_cond_broadcast(&mAvailableDocs_condition);
+        pthread_mutex_unlock(&mAvailableDocs_mutex);
     }
 
     fprintf(stderr, "Thread#%2ld: Exiting. \n", myThreadId); fflush(stdout);
@@ -232,27 +240,57 @@ unsigned myHash(const char *c1, const char *c2)
     return val;
 }
 
-void Match(char *doc_str, set<unsigned int> &exactMatchingQueries)
+void Match(char *doc_str, set<unsigned int> &matchingQueries)
 {
+    set<Word*>  doc_words;
     map<QueryID,set<Word *>> query_stats;
 
     const char *c1, *c2;
     c2 = doc_str;
     while(*c2==' ') ++c2;                                       // Skip any spaces
-    for (c1=c2;*c2;c1=c2+1) {
+    for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
         unsigned i = myHash(c1, c2);                            // Calculate the myHash for this word
-        while (wdb[i] && !wordsEqual(c1, c2, wdb[i]->txt))      // Skip any conflicts
+        while (mWdb[i] && !wordsEqual(c1, c2, mWdb[i]->txt))    // Skip any conflicts
             i = (i+1) & HASH_MASK;
-        if (!wdb[i]) continue;                                  // H leksi den yparxei sto TABLE
 
-        for (auto &q : wdb[i]->exactMatchingQueries)
-            query_stats[q].insert(wdb[i]);
+        if (!mWdb[i]) {                                         // Create the word if it doesn't exist
+            mWdb[i] = new Word(c1, c2);
+            doc_words.insert(mWdb[i]);
+            continue;
+        }
+
+        doc_words.insert(mWdb[i]);
+        for (auto q : mWdb[i]->querySet[MT_EXACT_MATCH])
+            query_stats[q].insert(mWdb[i]);
     }
 
+    for (auto wd : doc_words) {
+        for (auto wq : mActiveApproxWords) {
+            if (abs(wq->length - wd->length)>3) continue;
+            if (Word::letterDiff(wd, wq)>3) continue;
+
+            int dist_hamm = HammingDist(wd, wq);
+            int dist_edit = EditDist(wd, wq);
+
+            if (wq->length == wd->length && dist_hamm <= 3) {
+                for (auto q : wq->querySet[MT_HAMMING_DIST])
+                    if (dist_hamm <= mActiveQueries[q].dist) query_stats[q].insert(wq);
+            }
+
+            if ( dist_edit <= 3) {
+                for (auto q : wq->querySet[MT_EDIT_DIST])
+                    if (dist_edit <= mActiveQueries[q].dist) query_stats[q].insert(wq);
+            }
+
+
+        }
+    }
+
+    /* Finally find the matching queries */
     for (auto &x : query_stats){
-        if (x.second.size() == (unsigned) activeQueries[x.first].numWords) {
-            exactMatchingQueries.insert(x.first);
+        if (x.second.size() == (unsigned) mActiveQueries[x.first].numWords) {
+            matchingQueries.insert(x.first);
         }
     }
 
@@ -267,8 +305,13 @@ bool wordsEqual(const char *c1, const char *c2, const char *txt)
     else return false;
 }
 
-int EditDist(char* a, int na, char* b, int nb)
+int EditDist(Word *wa, Word *wb)
 {
+    char* a = wa->txt;
+    int na = wa->length;
+    char* b = wb->txt;
+    int nb = wb->length;
+
     int oo=0x7FFFFFFF;
 
     int T[2][MAX_WORD_LENGTH+1];
@@ -321,8 +364,13 @@ int EditDist(char* a, int na, char* b, int nb)
     return ret;
 }
 
-int HammingDist(char* a, int na, char* b, int nb)
+int HammingDist(Word *wa, Word *wb)
 {
+    char* a = wa->txt;
+    int na = wa->length;
+    char* b = wb->txt;
+    int nb = wb->length;
+
     int j, oo=0x7FFFFFFF;
     if(na!=nb) return oo;
 

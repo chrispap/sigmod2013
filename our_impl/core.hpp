@@ -3,7 +3,6 @@
 
 using namespace std;
 
-/* Struct definitions */
 struct DocResult
 {
     DocID       docID;
@@ -19,10 +18,27 @@ struct PendingDoc
 
 struct Word
 {
-    char txt[MAX_WORD_LENGTH+1];
-    set<QueryID> exactMatchingQueries;
+    int length;                                 ///< Strlen(txt);
+    unsigned letterBits;                        ///< 1 bit for every english lower letter [a-z]
+    set<QueryID> querySet[3];                   ///< Sets of queries matching this word. One set for each MatchType
+    char txt[MAX_WORD_LENGTH+1];                ///< The actual word :P
 
-    Word (const char *c1, const char *c2) {int i=0; while (c1!=c2) txt[i++]=*c1++; txt[i]='\0';}
+    Word (const char *c1, const char *c2)       ///< Store the new word and populate the data structures
+    {
+        letterBits =0;
+        int i=0;
+        while (c1!=c2) {
+            letterBits |= (1<<(*c1-'a'));       // Set tha bit for that letter ex.: For letter 'd' set bit#3
+            txt[i++] = *c1++;
+        }
+        txt[i]='\0';
+        length = i;
+    }
+
+    static int letterDiff(Word *w1, Word *w2 )
+    {
+        return __builtin_popcount(w1->letterBits ^ w2->letterBits);
+    }
 };
 
 struct Query
@@ -33,8 +49,7 @@ struct Query
     Word*       words[MAX_QUERY_WORDS];
 };
 
-/* Function prototypes */
-int   EditDist      (char* a, int na, char* b, int nb);
-int   HammingDist   (char* a, int na, char* b, int nb);
-void  Match         (char *cur_doc_str, set<QueryID> &query_ids);
-void* ThreadFunc    (void *param);
+struct LenComp {
+  bool operator() (const Word* lhs, const Word* rhs) const
+  {return lhs->length == rhs->length ? lhs < rhs : lhs->length < rhs->length ;}
+};
