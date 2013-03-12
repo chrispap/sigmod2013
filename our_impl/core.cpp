@@ -21,8 +21,8 @@ static int   EditDist       (Word *wa, Word *wb);
 static int   HammingDist    (Word *wa, Word *wb);
 
 /* Definitions */
-#define NUM_THREADS         8
-#define HASH_EXP            22                          ///< eg: 3
+#define NUM_THREADS         10
+#define HASH_EXP            17                          ///< eg: 3
 #define HASH_SIZE           (1<<HASH_EXP)               ///< eg: 2^3   = 8 = 00001000
 #define HASH_MASK           (HASH_SIZE-1)               ///< eg: 2^3-1 = 7 = 00000111
 

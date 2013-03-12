@@ -19,7 +19,7 @@ struct PendingDoc
 struct Word
 {
     int length;                                 ///< Strlen(txt);
-    int letterBits;                        ///< 1 bit for every english lower letter [a-z]
+    unsigned letterBits;                        ///< 1 bit for every english lower letter [a-z]
     set<QueryID> querySet[3];                   ///< Sets of queries matching this word. One set for each MatchType
     char txt[MAX_WORD_LENGTH+1];                ///< The actual word :P
 
