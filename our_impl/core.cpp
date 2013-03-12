@@ -22,7 +22,7 @@ static int   HammingDist    (Word *wa, Word *wb);
 
 /* Definitions */
 #define NUM_THREADS         8
-#define HASH_EXP            25                          ///< eg: 3
+#define HASH_EXP            22                          ///< eg: 3
 #define HASH_SIZE           (1<<HASH_EXP)               ///< eg: 2^3   = 8 = 00001000
 #define HASH_MASK           (HASH_SIZE-1)               ///< eg: 2^3-1 = 7 = 00000111
 
@@ -268,7 +268,7 @@ void Match(char *doc_str, set<unsigned int> &matchingQueries)
     for (auto wd : doc_words) {
         for (auto wq : mActiveApproxWords) {
             if (abs(wq->length - wd->length)>3) continue;
-            if (Word::letterDiff(wd, wq)>3) continue;
+            if (Word::letterDiff(wd, wq)>6) continue;
 
             int dist_hamm = HammingDist(wd, wq);
             int dist_edit = EditDist(wd, wq);

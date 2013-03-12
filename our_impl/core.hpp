@@ -19,16 +19,16 @@ struct PendingDoc
 struct Word
 {
     int length;                                 ///< Strlen(txt);
-    unsigned letterBits;                        ///< 1 bit for every english lower letter [a-z]
+    int letterBits;                        ///< 1 bit for every english lower letter [a-z]
     set<QueryID> querySet[3];                   ///< Sets of queries matching this word. One set for each MatchType
     char txt[MAX_WORD_LENGTH+1];                ///< The actual word :P
 
     Word (const char *c1, const char *c2)       ///< Store the new word and populate the data structures
     {
-        letterBits =0;
+        letterBits=0;
         int i=0;
         while (c1!=c2) {
-            letterBits |= (1<<(*c1-'a'));       // Set tha bit for that letter ex.: For letter 'd' set bit#3
+            letterBits |= 1 << (*c1-'a');       // Set tha bit for that letter ex.: For letter 'd' set bit#3
             txt[i++] = *c1++;
         }
         txt[i]='\0';
