@@ -100,7 +100,7 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 
         mWdb[i]->querySet[match_type].insert(query_id);         // Update the appropriate query set based on the match_type
         new_query.words[num_words] = mWdb[i];                   // Add the word to the query
-        if (match_type != MT_EXACT_MATCH)
+        if (match_type != MT_EXACT_MATCH)                       // ONLY for hamming | edit dist queries
             mActiveApproxWords.insert(mWdb[i]);                 // Add the word to the set with the approximate words
 
         num_words++;
@@ -116,12 +116,12 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 
 ErrorCode EndQuery(QueryID query_id)
 {
-    auto del_query_it = mActiveQueries.find(query_id);
-    auto del_query = del_query_it->second;
+    auto del_query_it = mActiveQueries.find(query_id);          // Iterator to the query that must be deleted
+    auto del_query = del_query_it->second;                      // The actual query
 
-    for (int i=0; i<del_query.numWords; i++)
+    for (int i=0; i<del_query.numWords; i++)                    // Erase this query from all the words it contained
         del_query.words[i]->querySet[del_query.type].erase(query_id);
-    mActiveQueries.erase(del_query_it);
+    mActiveQueries.erase(del_query_it);                         // Erase the query
     return EC_SUCCESS;
 }
 
@@ -242,7 +242,7 @@ unsigned myHash(const char *c1, const char *c2)
 
 void Match(char *doc_str, set<unsigned int> &matchingQueries)
 {
-    set<Word*>  doc_words;
+    set<Word*>  docWords;
     map<QueryID,set<Word *>> query_stats;
 
     const char *c1, *c2;
@@ -256,16 +256,16 @@ void Match(char *doc_str, set<unsigned int> &matchingQueries)
 
         if (!mWdb[i]) {                                         // Create the word if it doesn't exist
             mWdb[i] = new Word(c1, c2);
-            doc_words.insert(mWdb[i]);
+            docWords.insert(mWdb[i]);
             continue;
         }
 
-        doc_words.insert(mWdb[i]);
+        docWords.insert(mWdb[i]);
         for (auto q : mWdb[i]->querySet[MT_EXACT_MATCH])
             query_stats[q].insert(mWdb[i]);
     }
 
-    for (auto wd : doc_words) {
+    for (auto wd : docWords) {
         for (auto wq : mActiveApproxWords) {
             if (abs(wq->length - wd->length)>3) continue;
             if (Word::letterDiff(wd, wq)>6) continue;
@@ -274,15 +274,20 @@ void Match(char *doc_str, set<unsigned int> &matchingQueries)
             int dist_edit = EditDist(wd, wq);
 
             if (wq->length == wd->length && dist_hamm <= 3) {
-                for (auto q : wq->querySet[MT_HAMMING_DIST])
-                    if (dist_hamm <= mActiveQueries[q].dist) query_stats[q].insert(wq);
+                for (auto q : wq->querySet[MT_HAMMING_DIST]) {
+                    if (dist_hamm <= mActiveQueries[q].dist) {
+                        query_stats[q].insert(wq);
+                    }
+                }
             }
 
             if ( dist_edit <= 3) {
-                for (auto q : wq->querySet[MT_EDIT_DIST])
-                    if (dist_edit <= mActiveQueries[q].dist) query_stats[q].insert(wq);
+                for (auto q : wq->querySet[MT_EDIT_DIST]) {
+                    if (dist_edit <= mActiveQueries[q].dist){
+                        query_stats[q].insert(wq);
+                    }
+                }
             }
-
 
         }
     }
