@@ -4,25 +4,28 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <pthread.h>
+#include <atomic>
+#include <unordered_map>
 #include <queue>
 #include <map>
 #include <set>
-#include <unordered_map>
-#include <pthread.h>
 
 using namespace std;
 
 /* Function prototypes */
-static unsigned myHash      (const char *c1, const char *c2);
-static void* ThreadFunc     (void *param);
-static void  Match          (char *doc_str, set<QueryID> &query_ids);
-static bool  wordsEqual     (const char *c1, const char *c2, const char *txt);
-static int   EditDist       (Word *wa, Word *wb);
-static int   HammingDist    (Word *wa, Word *wb);
+static unsigned HashFunc        (const char *c1, const char *c2);
+static void     LockFlag        (atomic_flag &flag);
+static void     UnlockFlag      (atomic_flag &flag);
+static void*    ThreadFunc      (void *param);
+static void     Match           (const char *doc_str, set<QueryID> &query_ids);
+static bool     WordsEqual      (const char *c1, const char *c2, const char *txt);
+static int      EditDist        (Word *wa, Word *wb);
+static int      HammingDist     (Word *wa, Word *wb);
 
 /* Definitions */
-#define NUM_THREADS         10
-#define HASH_EXP            17                          ///< eg: 3
+#define NUM_THREADS         8
+#define HASH_EXP            18                          ///< eg: 3
 #define HASH_SIZE           (1<<HASH_EXP)               ///< eg: 2^3   = 8 = 00001000
 #define HASH_MASK           (HASH_SIZE-1)               ///< eg: 2^3-1 = 7 = 00000111
 
@@ -40,6 +43,7 @@ static pthread_mutex_t      mPendingDocs_mutex;         ///< Protect the access 
 static pthread_cond_t       mPendingDocs_condition;     ///<
 static pthread_mutex_t      mAvailableDocs_mutex;       ///< Protect the access to ready Documents
 static pthread_cond_t       mAvailableDocs_condition;   ///<
+static atomic_flag          hash_guard=ATOMIC_FLAG_INIT;
 
 /* Library Functions */
 ErrorCode InitializeIndex()
@@ -89,8 +93,8 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
     while(*c2==' ') ++c2;                                       // Skip any spaces
     for (c1=c2;*c2;c1=c2+1) {                                   // For each query word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
-        unsigned i = myHash(c1, c2);                            // Calculate the hash for this word
-        while (mWdb[i] && !wordsEqual(c1, c2, mWdb[i]->txt))    // Resolve any conflicts
+        unsigned i = HashFunc(c1, c2);                            // Calculate the hash for this word
+        while (mWdb[i] && !WordsEqual(c1, c2, mWdb[i]->txt))    // Resolve any conflicts
              i = (i+1) & HASH_MASK;
         if (!mWdb[i]) mWdb[i] = new Word(c1, c2);               // Create the word if it doesn't exist
 
@@ -232,15 +236,7 @@ void* ThreadFunc(void *param)
     return NULL;
 }
 
-unsigned myHash(const char *c1, const char *c2)
-{
-    unsigned val = 0;
-    while (c1!=c2) val = ((*c1++) + 61 * val);
-    val=val%HASH_SIZE;
-    return val;
-}
-
-void Match(char *doc_str, set<unsigned int> &matchingQueries)
+void Match(const char *doc_str, set<unsigned int> &matchingQueries)
 {
     set<Word*>  docWords;
     map<QueryID,set<Word *>> query_stats;
@@ -250,19 +246,21 @@ void Match(char *doc_str, set<unsigned int> &matchingQueries)
     while(*c2==' ') ++c2;                                       // Skip any spaces
     for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
-        unsigned i = myHash(c1, c2);                            // Calculate the myHash for this word
-        while (mWdb[i] && !wordsEqual(c1, c2, mWdb[i]->txt))    // Skip any conflicts
+        unsigned i = HashFunc(c1, c2);                          // Calculate the HashFunc for this word
+        LockFlag(hash_guard);
+        while (mWdb[i] && !WordsEqual(c1, c2, mWdb[i]->txt))    // Skip any conflicts
             i = (i+1) & HASH_MASK;
-
         if (!mWdb[i]) {                                         // Create the word if it doesn't exist
             mWdb[i] = new Word(c1, c2);
-            docWords.insert(mWdb[i]);
-            continue;
+            UnlockFlag(hash_guard);
+            doc_words.insert(mWdb[i]);
         }
-
-        docWords.insert(mWdb[i]);
-        for (auto q : mWdb[i]->querySet[MT_EXACT_MATCH])
-            query_stats[q].insert(mWdb[i]);
+        else {
+            UnlockFlag(hash_guard);
+            doc_words.insert(mWdb[i]);
+            for (auto q : mWdb[i]->querySet[MT_EXACT_MATCH])
+                query_stats[q].insert(mWdb[i]);
+        }
     }
 
     for (auto wd : docWords) {
@@ -303,7 +301,15 @@ void Match(char *doc_str, set<unsigned int> &matchingQueries)
 }
 
 /* Hepler Functions */
-bool wordsEqual(const char *c1, const char *c2, const char *txt)
+unsigned HashFunc(const char *c1, const char *c2)
+{
+    unsigned val = 0;
+    while (c1!=c2) val = ((*c1++) + 61 * val);
+    val=val%HASH_SIZE;
+    return val;
+}
+
+bool WordsEqual(const char *c1, const char *c2, const char *txt)
 {
     while (c1!=c2 && *txt) if (*txt++ != *c1++) return false;
     if (c1==c2 && !*txt) return true;
@@ -383,4 +389,14 @@ int HammingDist(Word *wa, Word *wb)
     for(j=0;j<na;j++) if(a[j]!=b[j]) num_mismatches++;
 
     return num_mismatches;
+}
+
+void LockFlag(atomic_flag &flag)
+{
+     while (flag.test_and_set(memory_order_acquire));
+}
+
+void UnlockFlag(atomic_flag &flag)
+{
+    flag.clear(std::memory_order_release);
 }
