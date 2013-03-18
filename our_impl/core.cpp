@@ -247,17 +247,17 @@ void Match(const char *doc_str, set<unsigned int> &matchingQueries)
     for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
         unsigned i = HashFunc(c1, c2);                          // Calculate the HashFunc for this word
-        LockFlag(hash_guard);
+        //~ LockFlag(hash_guard);
         while (mWdb[i] && !WordsEqual(c1, c2, mWdb[i]->txt))    // Skip any conflicts
             i = (i+1) & HASH_MASK;
         if (!mWdb[i]) {                                         // Create the word if it doesn't exist
             mWdb[i] = new Word(c1, c2);
-            UnlockFlag(hash_guard);
-            doc_words.insert(mWdb[i]);
+            //~ UnlockFlag(hash_guard);
+            docWords.insert(mWdb[i]);
         }
         else {
-            UnlockFlag(hash_guard);
-            doc_words.insert(mWdb[i]);
+            //~ UnlockFlag(hash_guard);
+            docWords.insert(mWdb[i]);
             for (auto q : mWdb[i]->querySet[MT_EXACT_MATCH])
                 query_stats[q].insert(mWdb[i]);
         }
