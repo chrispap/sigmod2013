@@ -1,0 +1,9 @@
+*.o
+*.so
+*.txt
+
+testdriver
+var
+
+*project*
+*settings*
