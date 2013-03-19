@@ -8,8 +8,10 @@
 #include <map>
 #include <set>
 
-#define HASH_SIZE           (1<<18)
-#define NUM_THREADS         8
+enum PHASE { PH_01, PH_02, PH_FINISHED };
+
+#define HASH_SIZE    (1<<18)
+#define NUM_THREADS  8
 
 using namespace std;
 
@@ -18,37 +20,49 @@ static int      HammingDist (Word *wa, Word *wb);
 static int      EditDist    (Word *wa, Word *wb);
 static void*    ThreadFunc  (void *param);
 static void     ParseDoc    (PendingDoc doc, const long thread_id);
-static void     Match       (                                    );
+static void     Match       (  );
 
-/* Global Data */
-static queue<PendingDoc>    mPendingDocs;                   ///< Pending Documents
-static queue<DocResult>     mAvailableDocs;                 ///< Ready Documents
+/* Global Word Data Base */
 static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to e v e r y single word encountered !!!
-static set<Word*>           mActiveApproxWords;             ///< Active words for approximate matcing
-static map<QueryID,Query>   mActiveQueries;                 ///< Active Query IDs
 
-/* Global data for threading */
-static volatile bool        mDone;                          ///< Used to singal the mThreads to exit
+/* Global Data for Documents that are still processed */
+static vector<PendingDoc>   mPendingDocs;                   ///< Pending Documents
+static int                  mPendingIndex;                  ///< Points the next Document that should be acquired for parsing
+
+/* Global Data for Active Queries */
+static map<QueryID,Query>   mActiveQueries;                 ///< Active Query IDs
+static set<Word*>           mActiveApproxWords;             ///< Active words for approximate matcing
+
+/* Global Data for Documents Ready for Delivery */
+static queue<DocResult>     mAvailableDocs;                 ///< Ready Documents
+
+/* Global Data for Threading */
+static PHASE                mPhase;                         ///< Indicates in which phase the threads should be.
 static pthread_t            mThreads[NUM_THREADS];          ///< Thread objects
 static pthread_mutex_t      mPendingDocs_mutex;             ///< Protect the access to pending Documents
-static pthread_cond_t       mPendingDocs_condition;         ///<    -//-
+static pthread_cond_t       mPendingDocs_cond;              ///<    -//-
 static pthread_mutex_t      mAvailableDocs_mutex;           ///< Protect the access to ready Documents
-static pthread_cond_t       mAvailableDocs_condition;       ///<    -//-
+static pthread_cond_t       mAvailableDocs_cond;            ///<    -//-
+static pthread_barrier_t    mBarrier_DocBegin;              ///< OI BARRIERS POU PISTEYW OTI XREIAZONTAI
+static pthread_barrier_t    mBarrier_DocsAnalyzed;
+static pthread_barrier_t    mBarrier_ResultStored;
 
 /* Library Functions */
 ErrorCode InitializeIndex()
 {
     /* Create the mThreads, which will enter the waiting state. */
     pthread_mutex_init(&mPendingDocs_mutex, NULL);
-    pthread_cond_init (&mPendingDocs_condition, NULL);
+    pthread_cond_init (&mPendingDocs_cond, NULL);
     pthread_mutex_init(&mAvailableDocs_mutex, NULL);
-    pthread_cond_init (&mAvailableDocs_condition, NULL);
+    pthread_cond_init (&mAvailableDocs_cond, NULL);
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-    mDone = false;
+    mPendingIndex = 0;
+    mPhase = PH_01;
+
     long t;
     for (t=0; t< NUM_THREADS; t++) {
         int rc = pthread_create(&mThreads[t], &attr, ThreadFunc, (void *)t);
@@ -61,10 +75,10 @@ ErrorCode InitializeIndex()
 ErrorCode DestroyIndex()
 {
     pthread_mutex_lock(&mPendingDocs_mutex);
-    pthread_cond_broadcast(&mPendingDocs_condition);
+    pthread_cond_broadcast(&mPendingDocs_cond);
     pthread_mutex_unlock(&mPendingDocs_mutex);
 
-    mDone = true;
+    mPhase = PH_FINISHED;
     int t;
     for (t=0; t<NUM_THREADS; t++) {
         pthread_join(mThreads[t], NULL);
@@ -117,6 +131,10 @@ ErrorCode EndQuery(QueryID query_id)
 
 ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
 {
+    pthread_mutex_lock(&mPendingDocs_mutex);
+    mPhase = PH_01;
+    pthread_mutex_unlock(&mPendingDocs_mutex);
+
     char *new_doc_str = (char *) malloc((1+strlen(doc_str)));
 
     if (!new_doc_str){
@@ -131,11 +149,8 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     newDoc.wordIndices = new IndexHashTable(HASH_SIZE);
 
     pthread_mutex_lock(&mPendingDocs_mutex);
-    while ( mPendingDocs.size() > (unsigned)NUM_THREADS )
-        pthread_cond_wait(&mPendingDocs_condition, &mPendingDocs_mutex);
-
-    mPendingDocs.push(newDoc);
-    pthread_cond_broadcast(&mPendingDocs_condition);
+    mPendingDocs.push_back(newDoc);
+    pthread_cond_broadcast(&mPendingDocs_cond);
     pthread_mutex_unlock(&mPendingDocs_mutex);
 
     return EC_SUCCESS;
@@ -143,10 +158,13 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
 
 ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_query_ids)
 {
-    /* Get the first undeliverd result from "mAvailableDocs" and return it */
+    pthread_mutex_lock(&mPendingDocs_mutex);
+    mPhase = PH_02;
+    pthread_mutex_unlock(&mPendingDocs_mutex);
+
     pthread_mutex_lock(&mAvailableDocs_mutex);
     while ( mAvailableDocs.empty() )
-        pthread_cond_wait(&mAvailableDocs_condition, &mAvailableDocs_mutex);
+        pthread_cond_wait(&mAvailableDocs_cond, &mAvailableDocs_mutex);
 
     *p_doc_id=0;
     *p_num_res=0;
@@ -162,7 +180,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     *p_num_res = res.numRes;
     *p_query_ids = res.queryIDs;
 
-    pthread_cond_broadcast(&mAvailableDocs_condition);
+    pthread_cond_broadcast(&mAvailableDocs_cond);
     pthread_mutex_unlock(&mAvailableDocs_mutex);
     return EC_SUCCESS;
 }
@@ -173,56 +191,84 @@ void* ThreadFunc(void *param)
     long myThreadId = (long) param;
     fprintf(stderr, "Thread#%2ld: Starting. \n", myThreadId); fflush(stdout);
 
+    /* MAIN LOOP */
     while (1)
     {
-        /* Wait untill new doc has arrived or "mDone" is set. */
-        pthread_mutex_lock(&mPendingDocs_mutex);
-        while (!mDone && mPendingDocs.empty())
-            pthread_cond_wait(&mPendingDocs_condition, &mPendingDocs_mutex);
+        /* PHASE 1 LOOP */
+        while (1)
+        {
+            pthread_mutex_lock(&mPendingDocs_mutex);
+            while ( mPhase == PH_01 && (mPendingDocs.empty() || mPendingIndex>= mPendingDocs.size()) )
+                pthread_cond_wait(&mPendingDocs_cond, &mPendingDocs_mutex);
+            if ( mPendingDocs.empty() || mPendingIndex >= mPendingDocs.size()) break;
 
-        if (mDone){
+            /* Get a document from the pending list */
+            PendingDoc doc = mPendingDocs[mPendingIndex++]; // Pairnw ena document kai ayksanw to pending index
+            pthread_cond_broadcast(&mPendingDocs_cond);
+            pthread_mutex_unlock(&mPendingDocs_mutex);
+
+            /* Parse the document */
+            set<QueryID> matchingQueries;
+            matchingQueries.clear();
+            ParseDoc(doc, myThreadId);
+            free(doc.str);
+        }
+
+        /* FINISH DETECTED */
+        if (mPhase == PH_FINISHED)
+        {
             pthread_mutex_unlock(&mPendingDocs_mutex);
             break;
         }
 
-        /* Get a document from the pending list */
-        PendingDoc doc = mPendingDocs.front();
-        mPendingDocs.pop();
-        pthread_cond_broadcast(&mPendingDocs_condition);
-        pthread_mutex_unlock(&mPendingDocs_mutex);
+        /* PHASE 2 LOOP */
+        /**************************************************************************************************
+        for (int d=0 ; d < plithos_apo_documents ; d++ )
+        {
+            //~ Den xreiazetai kapoios sygxronismos, oso vriskontai ola ta thread  sto idio document,
+            //~ arkei na eksasfalisoume oti se kathe document mpainoun ola mazi.
+            //~ Arkei enas barrier edw:
 
-        /* Process the document */
-        set<QueryID> matchingQueries;
-        matchingQueries.clear();
-        ParseDoc(doc, myThreadId);
-        free(doc.str);
+            pthread_barrier_wait(&mBarrier_DocBegin);
 
-        //...
-        //...
-        //...
-        //...
-        //...
-        //...
-        //...
+            //~ Edw prepei kathe thread
+            //~ na analysei to kommati
+            //~ pou tou antistoixei
+            //~ apo kathe document.
+            //~ Einai simantiko kathe thread na parei diaforetiko kommati !!!
+        }
+        **************************************************************************************************/
 
-        /* Create the result array */
-        DocResult result;
-        result.docID=doc.id;
-        result.numRes=matchingQueries.size();
-        result.queryIDs=0;
 
-        unsigned int i;
-        set<unsigned int>::const_iterator qi;
-        result.queryIDs=(QueryID*)malloc(result.numRes*sizeof(QueryID));
-        qi = matchingQueries.begin();
-        for(i=0;i<result.numRes;i++)
-            result.queryIDs[i] = *qi++;
+        pthread_barrier_wait(&mBarrier_DocsAnalyzed);
 
-        /* Store the result */
-        pthread_mutex_lock(&mAvailableDocs_mutex);
-        //mAvailableDocs.push(result);
-        pthread_cond_broadcast(&mAvailableDocs_condition);
-        pthread_mutex_unlock(&mAvailableDocs_mutex);
+        /* Thread [0]: Create and store the results */
+        if (myThreadId==0)
+        {
+            /*
+                pthread_mutex_lock(&mAvailableDocs_mutex);
+
+                //~ Edw prepei na apothikeytoun ta results
+
+                for (int d=0 ; d < plithos_apo_documents ; d++ )
+                {
+                    //~ Create the result
+                    mAvailableDocs.push(result);
+                }
+
+                //~ Edw diagrafontai ta palia documents kai shmatodoteitai
+                //~ to main thread pou kata pasa pithanotita perimenei ta apotelesmata
+                //~ SOS: Oi 4 parakatw grammes prepei na ginoun me ayti tin seira!
+
+                mPendingDocs.clear();
+                mPendingIndex=0;
+                pthread_cond_broadcast(&mAvailableDocs_condition);
+                pthread_mutex_unlock(&mAvailableDocs_mutex);
+            */
+        }
+
+        /* Threads [1-N]: Wait for thread 0 to finish storing the results */
+        pthread_barrier_wait(&mBarrier_ResultStored);
     }
 
     fprintf(stderr, "Thread#%2ld: Exiting. \n", myThreadId); fflush(stdout);

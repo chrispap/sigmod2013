@@ -216,6 +216,9 @@ struct PendingDoc
     DocID           id;
     char            *str;
     IndexHashTable  *wordIndices;
+
+    PendingDoc() { wordIndices=NULL;}
+    ~PendingDoc() { if (wordIndices!=NULL) delete wordIndices;}
 };
 
 struct DocResult
