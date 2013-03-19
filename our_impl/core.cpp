@@ -190,27 +190,27 @@ void* ThreadFunc(void *param)
         pthread_mutex_unlock(&mPendingDocs_mutex);
 
         /* Process the document */
-        set<QueryID> matched_query_ids;
-        matched_query_ids.clear();
+        set<QueryID> matchingQueries;
+        matchingQueries.clear();
         ParseDoc(doc, myThreadId);
         free(doc.str);
 
         /* Create the result array */
         DocResult result;
         result.docID=doc.id;
-        result.numRes=matched_query_ids.size();
+        result.numRes=matchingQueries.size();
         result.queryIDs=0;
 
         unsigned int i;
         set<unsigned int>::const_iterator qi;
         result.queryIDs=(QueryID*)malloc(result.numRes*sizeof(QueryID));
-        qi = matched_query_ids.begin();
+        qi = matchingQueries.begin();
         for(i=0;i<result.numRes;i++)
             result.queryIDs[i] = *qi++;
 
         /* Store the result */
         pthread_mutex_lock(&mAvailableDocs_mutex);
-        mAvailableDocs.push(result);
+        //mAvailableDocs.push(result);
         pthread_cond_broadcast(&mAvailableDocs_condition);
         pthread_mutex_unlock(&mAvailableDocs_mutex);
     }

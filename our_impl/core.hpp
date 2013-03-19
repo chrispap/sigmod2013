@@ -91,7 +91,7 @@ private:
     {
         const char *c = w->txt;
         unsigned val = 0;
-        while (c) val = ((*c++) + 61 * val);
+        while (*c) val = ((*c++) + 61 * val);
         val=val%capacity;
         return val;
     }
@@ -107,10 +107,11 @@ private:
     }
 
 public:
+    vector<Word*> contents;
+
     WordHashTable (unsigned _capacity)
     {
         capacity = _capacity;
-        contents.reserve(64);
         table = (Word**) malloc (capacity * sizeof(Word*));
         clear();
     }
@@ -119,8 +120,6 @@ public:
     {
         free(table);
     }
-
-    vector<Word*>   contents;
 
     /**
      * Inserts the word that begins in c1 and terminates in c2
@@ -134,15 +133,18 @@ public:
      */
     bool insert (const char *c1, const char *c2, Word** inserted_word)
     {
+        lock();
         unsigned i = hash(c1, c2);
         while (table[i] && !table[i]->equals(c1, c2)) i = (i+1) % capacity;
         if (!table[i]) {
             table[i] = new Word(c1, c2);
             *inserted_word = table[i];
             contents.push_back(table[i]);
+            unlock();
             return true;
         }
         *inserted_word = table[i];
+        unlock();
         return false;
     }
 
@@ -153,13 +155,16 @@ public:
      */
     bool insert (Word* word)
     {
+        lock();
         unsigned i = hash(word);
         while (table[i] && word->equals(table[i])) i = (i+1) % capacity;
         if (!table[i]) {
             table[i] = word;
             contents.push_back(word);
+            unlock();
             return true;
         }
+        unlock();
         return false;
     }
 
