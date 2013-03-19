@@ -8,6 +8,9 @@
 #include <map>
 #include <set>
 
+#define HASH_SIZE           (1<<18)
+#define NUM_THREADS         8
+
 using namespace std;
 
 /* Function prototypes */
@@ -15,16 +18,13 @@ static int      HammingDist (Word *wa, Word *wb);
 static int      EditDist    (Word *wa, Word *wb);
 static void*    ThreadFunc  (void *param);
 static void     ParseDoc    (PendingDoc doc, const long thread_id);
-static void     Match       (  /* to: Mariaki ???? */ );
+static void     Match       (                                    );
 
 /* Global Data */
-#define NUM_THREADS         8
-
 static queue<PendingDoc>    mPendingDocs;                   ///< Pending Documents
 static queue<DocResult>     mAvailableDocs;                 ///< Ready Documents
-static WordHashTable        GWDB(1<<18);                    ///< Here store pointers to e v e r y single word encountered !!!
-static WordHashTable*       tWDB[NUM_THREADS];              ///< 1 hash table per thread
-static WordHashTable        mActiveApproxWords(10000);      ///< Active words for approximate matcing
+static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to e v e r y single word encountered !!!
+static set<Word*>           mActiveApproxWords;             ///< Active words for approximate matcing
 static map<QueryID,Query>   mActiveQueries;                 ///< Active Query IDs
 
 /* Global data for threading */
@@ -51,7 +51,6 @@ ErrorCode InitializeIndex()
     mDone = false;
     long t;
     for (t=0; t< NUM_THREADS; t++) {
-        tWDB[t] = new WordHashTable(10000);
         int rc = pthread_create(&mThreads[t], &attr, ThreadFunc, (void *)t);
         if (rc) { fprintf(stderr, "ERROR; return code from pthread_create() is %d\n", rc); exit(-1);}
     }
@@ -86,7 +85,9 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
 
         Word* nw;
-        GWDB.insert(c1, c2, &nw);                               // Store the word in the GWDB
+        unsigned nw_index;
+        GWDB.insert(c1, c2, &nw_index, &nw);                    // Store the word in the GWDB
+
         nw->querySet[match_type].insert(query_id);              // Update the appropriate query set based on the match_type
         new_query.words[num_words] = nw;                        // Add the word to the query
         if (match_type != MT_EXACT_MATCH)                       // ONLY for hamming | edit dist queries
@@ -116,17 +117,18 @@ ErrorCode EndQuery(QueryID query_id)
 
 ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
 {
-    char *cur_doc_str = (char *) malloc((1+strlen(doc_str)));
+    char *new_doc_str = (char *) malloc((1+strlen(doc_str)));
 
-    if (!cur_doc_str){
+    if (!new_doc_str){
         fprintf(stderr, "Could not allocate memory. \n");fflush(stderr);
         return EC_FAIL;
     }
 
-    strcpy(cur_doc_str, doc_str);
+    strcpy(new_doc_str, doc_str);
     PendingDoc newDoc;
-    newDoc.id=doc_id;
-    newDoc.str=cur_doc_str;
+    newDoc.id = doc_id;
+    newDoc.str = new_doc_str;
+    newDoc.wordIndices = new IndexHashTable(HASH_SIZE);
 
     pthread_mutex_lock(&mPendingDocs_mutex);
     while ( mPendingDocs.size() > (unsigned)NUM_THREADS )
@@ -195,6 +197,14 @@ void* ThreadFunc(void *param)
         ParseDoc(doc, myThreadId);
         free(doc.str);
 
+        //...
+        //...
+        //...
+        //...
+        //...
+        //...
+        //...
+
         /* Create the result array */
         DocResult result;
         result.docID=doc.id;
@@ -224,12 +234,15 @@ void ParseDoc(PendingDoc doc, const long thread_id)
     const char *c1, *c2 = doc.str;
 
     while(*c2==' ') ++c2;                                       // Skip any spaces
-
     for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
+
+
         Word* nw;
-        GWDB.insert(c1, c2, &nw);
-        bool already = tWDB[thread_id]->insert(nw);
+        unsigned nw_index;
+        GWDB.insert(c1, c2, &nw_index, &nw);                    // We acquire the unique index for that word
+
+        doc.wordIndices->insert(nw_index);                      // We store the word to the documents set of word indices
     }
 
 }

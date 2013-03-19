@@ -7,19 +7,6 @@
 
 using namespace std;
 
-struct DocResult
-{
-    DocID       docID;
-    unsigned    numRes;
-    QueryID*    queryIDs;
-};
-
-struct PendingDoc
-{
-    DocID       id;
-    char        *str;
-};
-
 struct Word
 {
     int         length;                                 ///< Strlen(txt);
@@ -66,15 +53,14 @@ struct Word
 
 struct Query
 {
-    MatchType   type;
-    char        dist;
-    char        numWords;
-    Word*       words[MAX_QUERY_WORDS];
+    MatchType       type;
+    char            dist;
+    char            numWords;
+    Word*           words[MAX_QUERY_WORDS];
 };
 
 class WordHashTable
 {
-private:
     Word**          table;
     unsigned        capacity;
     atomic_flag     guard=ATOMIC_FLAG_INIT;
@@ -96,20 +82,12 @@ private:
         return val;
     }
 
-    void lock()
-    {
-         while (guard.test_and_set(memory_order_acquire));
-    }
+    void lock() { while (guard.test_and_set(memory_order_acquire)); }
 
-    void unlock()
-    {
-        guard.clear(std::memory_order_release);
-    }
+    void unlock() { guard.clear(std::memory_order_release); }
 
 public:
-    vector<Word*> contents;
-
-    WordHashTable (unsigned _capacity)
+    WordHashTable(unsigned _capacity)
     {
         capacity = _capacity;
         table = (Word**) malloc (capacity * sizeof(Word*));
@@ -119,6 +97,11 @@ public:
     ~WordHashTable()
     {
         free(table);
+    }
+
+    void clear ()
+    {
+         for (unsigned i=0 ; i<capacity ; i++) table[i] = 0;
     }
 
     /**
@@ -131,19 +114,20 @@ public:
      *  @param c2 One char past the last char of the string to insert.
      *  @return true if a new Word was created or false if an equivalent Word already existed
      */
-    bool insert (const char *c1, const char *c2, Word** inserted_word)
+    bool insert (const char *c1, const char *c2, unsigned* inserted_word_index, Word** inserted_word)
     {
         lock();
-        unsigned i = hash(c1, c2);
-        while (table[i] && !table[i]->equals(c1, c2)) i = (i+1) % capacity;
-        if (!table[i]) {
-            table[i] = new Word(c1, c2);
-            *inserted_word = table[i];
-            contents.push_back(table[i]);
+        unsigned index = hash(c1, c2);
+        while (table[index] && !table[index]->equals(c1, c2)) index = (index+1) % capacity;
+        if (!table[index]) {
+            table[index] = new Word(c1, c2);
+            *inserted_word_index = index;
+            *inserted_word = table[index];
             unlock();
             return true;
         }
-        *inserted_word = table[i];
+        *inserted_word_index = index;
+        *inserted_word = table[index];
         unlock();
         return false;
     }
@@ -156,11 +140,10 @@ public:
     bool insert (Word* word)
     {
         lock();
-        unsigned i = hash(word);
-        while (table[i] && word->equals(table[i])) i = (i+1) % capacity;
-        if (!table[i]) {
-            table[i] = word;
-            contents.push_back(word);
+        unsigned index = hash(word);
+        while (table[index] && word->equals(table[index])) index = (index+1) % capacity;
+        if (!table[index]) {
+            table[index] = word;
             unlock();
             return true;
         }
@@ -168,9 +151,76 @@ public:
         return false;
     }
 
-    void clear ()
+    Word* getWord(unsigned index) const
     {
-         for (unsigned i=0 ; i<capacity ; i++) table[i] = 0;
+        if (index>=capacity) return NULL;
+        else return table[index];
+    }
+};
+
+class IndexHashTable
+{
+    typedef unsigned unit;
+
+    unit*               units;
+    unsigned            capacity;
+    unsigned            numUnits;
+    unsigned            bitsPerUnit;
+    atomic_flag         guard=ATOMIC_FLAG_INIT;
+
+    void lock() { while (guard.test_and_set(memory_order_acquire)); }
+
+    void unlock() { guard.clear(std::memory_order_release);}
+
+public:
+    IndexHashTable(unsigned _capacity)
+    {
+        capacity = _capacity;
+        bitsPerUnit = (sizeof(unit) * 8);
+        numUnits = capacity/bitsPerUnit;
+        if (capacity%bitsPerUnit) numUnits++;                   // An to capacity den einai akeraio pollaplasio tou bitsPerUnit, tote theloume allo ena unit.
+        units = (unit*) malloc ( numUnits*sizeof(unit));        // Allocate space with capacity bits. (NOT BYTES, BITS!)
+        for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;
     }
 
+    ~IndexHashTable()
+    {
+        free(units);
+    }
+
+    vector<unsigned> indexVec;
+
+    bool insert (unsigned index)
+    {
+        if (index >= capacity) {fprintf(stderr, "CANNOT STORE INDEX %u (TOO LARGE) \n", index); fflush(stderr); return false;}
+        lock();
+        unsigned unit_offs = index / bitsPerUnit;
+        unsigned unit_bit  = index % bitsPerUnit;
+        unit mask = 1 << unit_bit;
+        if (units[unit_offs] & mask) {
+            unlock();
+            return false;
+        }
+        else {
+            units[unit_offs] |= mask;
+            indexVec.push_back(index);
+            unlock();
+            return true;
+        }
+    }
+
+};
+
+struct PendingDoc
+{
+    DocID           id;
+    char            *str;
+    IndexHashTable  *wordIndices;
+};
+
+struct DocResult
+{
+    DocID       docID;
+    unsigned    numRes;
+    QueryID*    queryIDs;
 };
