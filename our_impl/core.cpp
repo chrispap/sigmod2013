@@ -3,68 +3,62 @@
 #include <cstdlib>
 #include <cstring>
 #include <pthread.h>
-#include <unordered_map>
 #include <queue>
 #include <map>
 #include <set>
 
-enum PHASE { PH_01, PH_02, PH_FINISHED };
-
 #define HASH_SIZE    (1<<18)
 #define NUM_THREADS  8
+
+enum PHASE { PH_01, PH_02, PH_FINISHED };
 
 using namespace std;
 
 /* Function prototypes */
-static int      HammingDist (Word *wa, Word *wb);
-static int      EditDist    (Word *wa, Word *wb);
 static void*    ThreadFunc  (void *param);
 static void     ParseDoc    (PendingDoc doc, const long thread_id);
-static void     Match       (  );
 
-/* Global Word Data Base */
-static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to e v e r y single word encountered !!!
+static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to e v e r y single word encountered
 
-/* Global Data for Documents that are still processed */
-static vector<PendingDoc>   mPendingDocs;                   ///< Pending Documents
-static int                  mPendingIndex;                  ///< Points the next Document that should be acquired for parsing
+/* Documents */
+static queue<DocResult>     mAvailableDocs;                 ///< Documents that have been completely processed and are ready for delivery.
+static vector<PendingDoc>   mPendingDocs;                   ///< Documents that haven't yet been completely processed.
+static unsigned             mPendingIndex;                  ///< Points the next Document that should be acquired for parsing
+static IndexHashTable       mBatchWords(HASH_SIZE,false);     ///<
 
-/* Global Data for Active Queries */
+/* Queries */
 static map<QueryID,Query>   mActiveQueries;                 ///< Active Query IDs
 static set<Word*>           mActiveApproxWords;             ///< Active words for approximate matcing
 
-/* Global Data for Documents Ready for Delivery */
-static queue<DocResult>     mAvailableDocs;                 ///< Ready Documents
-
-/* Global Data for Threading */
+/* Threading */
 static PHASE                mPhase;                         ///< Indicates in which phase the threads should be.
 static pthread_t            mThreads[NUM_THREADS];          ///< Thread objects
 static pthread_mutex_t      mPendingDocs_mutex;             ///< Protect the access to pending Documents
-static pthread_cond_t       mPendingDocs_cond;              ///<    -//-
+static pthread_cond_t       mPendingDocs_cond;              ///<
 static pthread_mutex_t      mAvailableDocs_mutex;           ///< Protect the access to ready Documents
-static pthread_cond_t       mAvailableDocs_cond;            ///<    -//-
+static pthread_cond_t       mAvailableDocs_cond;            ///<
 static pthread_barrier_t    mBarrier_DocBegin;              ///< OI BARRIERS POU PISTEYW OTI XREIAZONTAI
-static pthread_barrier_t    mBarrier_DocsAnalyzed;
-static pthread_barrier_t    mBarrier_ResultStored;
+static pthread_barrier_t    mBarrier_DocsAnalyzed;          ///<     -//-
+static pthread_barrier_t    mBarrier_ResultStored;          ///<     -//-
 
 /* Library Functions */
 ErrorCode InitializeIndex()
 {
     /* Create the mThreads, which will enter the waiting state. */
-    pthread_mutex_init(&mPendingDocs_mutex, NULL);
-    pthread_cond_init (&mPendingDocs_cond, NULL);
+    pthread_mutex_init(&mPendingDocs_mutex,   NULL);
+    pthread_cond_init (&mPendingDocs_cond,    NULL);
     pthread_mutex_init(&mAvailableDocs_mutex, NULL);
-    pthread_cond_init (&mAvailableDocs_cond, NULL);
-
+    pthread_cond_init (&mAvailableDocs_cond,  NULL);
+    pthread_barrier_init(&mBarrier_DocBegin,     NULL, NUM_THREADS);
+    pthread_barrier_init(&mBarrier_DocsAnalyzed, NULL, NUM_THREADS);
+    pthread_barrier_init(&mBarrier_ResultStored, NULL, NUM_THREADS);
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-
     mPendingIndex = 0;
     mPhase = PH_01;
 
-    long t;
-    for (t=0; t< NUM_THREADS; t++) {
+    for (long t=0; t< NUM_THREADS; t++) {
         int rc = pthread_create(&mThreads[t], &attr, ThreadFunc, (void *)t);
         if (rc) { fprintf(stderr, "ERROR; return code from pthread_create() is %d\n", rc); exit(-1);}
     }
@@ -191,83 +185,153 @@ void* ThreadFunc(void *param)
     long myThreadId = (long) param;
     fprintf(stderr, "Thread#%2ld: Starting. \n", myThreadId); fflush(stdout);
 
-    /* MAIN LOOP */
     while (1)
     {
-        /* PHASE 1 LOOP */
+        /* PHASE 1 */
         while (1)
         {
             pthread_mutex_lock(&mPendingDocs_mutex);
             while ( mPhase == PH_01 && (mPendingDocs.empty() || mPendingIndex>= mPendingDocs.size()) )
                 pthread_cond_wait(&mPendingDocs_cond, &mPendingDocs_mutex);
-            if ( mPendingDocs.empty() || mPendingIndex >= mPendingDocs.size()) break;
+            if ( mPendingDocs.empty() || mPendingIndex >= mPendingDocs.size()) {
+                pthread_mutex_unlock(&mPendingDocs_mutex);
+                break;
+            }
 
             /* Get a document from the pending list */
-            PendingDoc doc = mPendingDocs[mPendingIndex++]; // Pairnw ena document kai ayksanw to pending index
+            PendingDoc doc = mPendingDocs[mPendingIndex++];
             pthread_cond_broadcast(&mPendingDocs_cond);
             pthread_mutex_unlock(&mPendingDocs_mutex);
 
             /* Parse the document */
-            set<QueryID> matchingQueries;
-            matchingQueries.clear();
             ParseDoc(doc, myThreadId);
+
+            if (doc.id == 3 ){
+            for (unsigned index: doc.wordIndices->indexVec){
+                printf("%s\n", GWDB.getWord(index)->txt);
+                fflush(NULL);
+            }
+        }
+
             free(doc.str);
         }
 
         /* FINISH DETECTED */
-        if (mPhase == PH_FINISHED)
-        {
-            pthread_mutex_unlock(&mPendingDocs_mutex);
-            break;
-        }
+        if (mPhase == PH_FINISHED) break;
 
-        /* PHASE 2 LOOP */
-        /**************************************************************************************************
-        for (int d=0 ; d < plithos_apo_documents ; d++ )
-        {
-            //~ Den xreiazetai kapoios sygxronismos, oso vriskontai ola ta thread  sto idio document,
-            //~ arkei na eksasfalisoume oti se kathe document mpainoun ola mazi.
-            //~ Arkei enas barrier edw:
-
-            pthread_barrier_wait(&mBarrier_DocBegin);
-
-            //~ Edw prepei kathe thread
-            //~ na analysei to kommati
-            //~ pou tou antistoixei
-            //~ apo kathe document.
-            //~ Einai simantiko kathe thread na parei diaforetiko kommati !!!
-        }
-        **************************************************************************************************/
-
+        /* PHASE 2 */
+        /*************************************************************************************************
+        * Maria, se ayto to simeio sou dinw ta eksis:
+        *
+        *   @info: Kathe Word* exei 3 stl::set pou periexoun ta Queries sta opoia ayti i lexi periexetai.
+        *           [1 set gia kathe match_type]
+        *           San Word* tha vlepeis esy tis lekseis.
+        *
+        *   @static stl::vector mPendingDocs
+        *       - Periexei ola ta document aytou tou BATCH.
+        *       - Kathe document einai ena struct PendingDoc
+        *       - To megethos tou mPendingDocs einai mPendingDocs.size()
+        *
+        *       - Gia na prospelaseis ola ta documents kaneis to eksis:
+        *           for (int i=0 ; i<mPendingDocs.size() ; i++) {
+        *               mPendingDocs[i].id                          // Ayto einai to id tou document
+        *               mPendingDocs[i].wordIndices->indexVec;      // Ayto einai to stl::vector pou periexei ena index gia kathe lexi tou document ( without duplicates )
+        *           }
+        *
+        *        - Gia na prospelaseis oles tis lekseis enos Document kaneis to eksis:
+        *           for (unsigned index: mPendingDocs[i].wordIndices->indexVec){    //Anti gia to `:`  mporeis na valeis klassiko for me i apo 0 ews wordIndices->indexVec.size()
+        *               Word* w = GWDB.getWord(index);
+        *           }
+        *
+        *
+        *   @SOS  ==>   Ayto pou prpei na xwriseis sta 8 kai na anatheseis sta thread sou
+        *               einai to stl::vector `wordIndices->indexVec` tou kathe Document.
+        *
+        *
+        *   @static stl::map<QueryID,Query> mActiveQueries
+        *        - Periexei ola active queries.
+        *        - An thes na ta prospelaseis to kaneis etsi:
+        *           for (auto &q : mActiveQueries) {
+        *               QueryID qid = q.first;
+        *               Query query = q.second;
+        *           }
+        *        - An thes na vreis ena query an exeis to id tou mporeis na kaneis to eksis:
+        *           QueryID qid;
+        *           Query query = mActiveQueries[qid];
+        *
+        *   @static stl::set mActiveApproxWords
+        *        - Oi lekseis twn queries pou periexontai se approximate queries ( hamming / edit )
+        *        - Me aytes prepei na kaneis elegxo gia approximate matching oles tis lexeis twn document
+        *        - Ayti i domi einai ayti pou prepei na allaksei me to trie pou ftiaxneis !!!
+        *
+        *   @static IndexHashTable mBatchWords
+        *        - Edw prepei na vazeis tis lekseis twn documents gia na ksereis an tis exeis ksana synantisei sto trexon BATCH
+        *        - Etsi tha elegxeis gia mia leksi.
+        *           > Ypothetw oti exeis to `index` tis leksis pou to exeis parei apo to `wordIndices->indexVec` tou document.
+        *           >
+        *           >   unsigned index = ... ;
+        *           >   bool first_occurence = mBatchWords.insert(index);
+        *           >   if (first_occurence) {
+        *           >       // Edw exeis mia leksi pou den exei ksana-emfanistei se ayto to BATCH,
+        *           >   } else {
+        *           >       // Edw mallon den tha kaneis tpt afou ayti i leksi exei emfanistei proigoumenws sto BATCH
+        *           >   }
+        *           >
+        *           >   Otan teleiwseis ayto to batch prepei na kaneis clear to mBatchWords
+        *           >       mBatchWords.clear();
+        *           >
+        *
+        *
+        *--------------------------------------------------------------------------------------------------
+        *
+        * Ayto pou prepei na kaneis xonrtika einai kati tetoio:
+        *
+        *   for (int d=0 ; d < plithos_apo_documents ; d++ ) {
+        *       // Den xreiazetai kapoios sygxronismos, oso vriskontai ola ta thread  sto idio document,
+        *       // arkei na eksasfalisoume oti se kathe document mpainoun ola mazi.
+        *       // Arkei aytos o barrier nomizw:
+        *
+        *       pthread_barrier_wait(&mBarrier_DocBegin);
+        *
+        *       // Edw prepei kathe thread
+        *       // na analysei to kommati
+        *       // pou tou antistoixei
+        *       // apo kathe document.
+        *       // Einai simantiko kathe thread na parei diaforetiko kommati !!!
+        *   }
+        *
+        **********************************************************************************************/
 
         pthread_barrier_wait(&mBarrier_DocsAnalyzed);
 
-        /* Thread [0]: Create and store the results */
-        if (myThreadId==0)
-        {
-            /*
-                pthread_mutex_lock(&mAvailableDocs_mutex);
+        /* LAST PHASE */
+        /*********************************************************************************************
+        * - Edw prepei na apothikeytoun ta results
+        * - An thes na to kaneis me ena thread ayto enw ta alla na perimenoun,
+        *   to parakatw tha se voithisei:
+        *
+        *   pthread_mutex_lock(&mAvailableDocs_mutex);
+        *
+        *   if (myThreadId==0) {
+        *       for (int D=0 ; D < plithos_apo_documents ; D++ ) {
+        *           // Create the result for document: D
+        *           // sto struct doc pou antiprosopeyei to doc D prepei na ginei `delete wordIndices`
+        *           mAvailableDocs.push(result);
+        *       }
+        *
+        *       // Edw diagrafontai ta palia documents kai shmatodoteitai
+        *       // to main thread pou kata pasa pithanotita perimenei ta apotelesmata
+        *       // SOS: Oi 4 parakatw grammes prepei na ginoun me ayti tin seira!
+        *
+        *       mBatchWords.clear();
+        *       mPendingDocs.clear();
+        *       mPendingIndex=0;
+        *       pthread_cond_broadcast(&mAvailableDocs_condition);
+        *       pthread_mutex_unlock(&mAvailableDocs_mutex);
+        *   }
+        *
+        **********************************************************************************************/
 
-                //~ Edw prepei na apothikeytoun ta results
-
-                for (int d=0 ; d < plithos_apo_documents ; d++ )
-                {
-                    //~ Create the result
-                    mAvailableDocs.push(result);
-                }
-
-                //~ Edw diagrafontai ta palia documents kai shmatodoteitai
-                //~ to main thread pou kata pasa pithanotita perimenei ta apotelesmata
-                //~ SOS: Oi 4 parakatw grammes prepei na ginoun me ayti tin seira!
-
-                mPendingDocs.clear();
-                mPendingIndex=0;
-                pthread_cond_broadcast(&mAvailableDocs_condition);
-                pthread_mutex_unlock(&mAvailableDocs_mutex);
-            */
-        }
-
-        /* Threads [1-N]: Wait for thread 0 to finish storing the results */
         pthread_barrier_wait(&mBarrier_ResultStored);
     }
 
@@ -283,93 +347,10 @@ void ParseDoc(PendingDoc doc, const long thread_id)
     for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
 
-
         Word* nw;
         unsigned nw_index;
         GWDB.insert(c1, c2, &nw_index, &nw);                    // We acquire the unique index for that word
-
         doc.wordIndices->insert(nw_index);                      // We store the word to the documents set of word indices
     }
 
-}
-
-void Match()
-{
-
-}
-
-/* Hepler Functions */
-int EditDist(Word *wa, Word *wb)
-{
-    char* a = wa->txt;
-    int na = wa->length;
-    char* b = wb->txt;
-    int nb = wb->length;
-
-    int oo=0x7FFFFFFF;
-
-    int T[2][MAX_WORD_LENGTH+1];
-
-    int ia, ib;
-
-    int cur=0;
-    ia=0;
-
-    for(ib=0;ib<=nb;ib++)
-        T[cur][ib]=ib;
-
-    cur=1-cur;
-
-    for(ia=1;ia<=na;ia++)
-    {
-        for(ib=0;ib<=nb;ib++)
-            T[cur][ib]=oo;
-
-        int ib_st=0;
-        int ib_en=nb;
-
-        if(ib_st==0)
-        {
-            ib=0;
-            T[cur][ib]=ia;
-            ib_st++;
-        }
-
-        for(ib=ib_st;ib<=ib_en;ib++)
-        {
-            int ret=oo;
-
-            int d1=T[1-cur][ib]+1;
-            int d2=T[cur][ib-1]+1;
-            int d3=T[1-cur][ib-1]; if(a[ia-1]!=b[ib-1]) d3++;
-
-            if(d1<ret) ret=d1;
-            if(d2<ret) ret=d2;
-            if(d3<ret) ret=d3;
-
-            T[cur][ib]=ret;
-        }
-
-        cur=1-cur;
-    }
-
-    int ret=T[1-cur][nb];
-
-    return ret;
-}
-
-int HammingDist(Word *wa, Word *wb)
-{
-    char* a = wa->txt;
-    int na = wa->length;
-    char* b = wb->txt;
-    int nb = wb->length;
-
-    int j, oo=0x7FFFFFFF;
-    if(na!=nb) return oo;
-
-    unsigned int num_mismatches=0;
-    for(j=0;j<na;j++) if(a[j]!=b[j]) num_mismatches++;
-
-    return num_mismatches;
 }

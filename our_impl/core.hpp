@@ -49,6 +49,81 @@ struct Word
         return __builtin_popcount(this->letterBits ^ w->letterBits);
     }
 
+    int EditDist(Word *w)
+    {
+        char* a = w->txt;
+        int na = w->length;
+        char* b = this->txt;
+        int nb = this->length;
+
+        int oo=0x7FFFFFFF;
+
+        int T[2][MAX_WORD_LENGTH+1];
+
+        int ia, ib;
+
+        int cur=0;
+        ia=0;
+
+        for(ib=0;ib<=nb;ib++)
+            T[cur][ib]=ib;
+
+        cur=1-cur;
+
+        for(ia=1;ia<=na;ia++)
+        {
+            for(ib=0;ib<=nb;ib++)
+                T[cur][ib]=oo;
+
+            int ib_st=0;
+            int ib_en=nb;
+
+            if(ib_st==0)
+            {
+                ib=0;
+                T[cur][ib]=ia;
+                ib_st++;
+            }
+
+            for(ib=ib_st;ib<=ib_en;ib++)
+            {
+                int ret=oo;
+
+                int d1=T[1-cur][ib]+1;
+                int d2=T[cur][ib-1]+1;
+                int d3=T[1-cur][ib-1]; if(a[ia-1]!=b[ib-1]) d3++;
+
+                if(d1<ret) ret=d1;
+                if(d2<ret) ret=d2;
+                if(d3<ret) ret=d3;
+
+                T[cur][ib]=ret;
+            }
+
+            cur=1-cur;
+        }
+
+        int ret=T[1-cur][nb];
+
+        return ret;
+    }
+
+    int HammingDist(Word *w)
+    {
+        char* a = w->txt;
+        int na = w->length;
+        char* b = this->txt;
+        int nb = this->length;
+
+        int j, oo=0x7FFFFFFF;
+        if(na!=nb) return oo;
+
+        unsigned int num_mismatches=0;
+        for(j=0;j<na;j++) if(a[j]!=b[j]) num_mismatches++;
+
+        return num_mismatches;
+    }
+
 };
 
 struct Query
@@ -91,7 +166,7 @@ public:
     {
         capacity = _capacity;
         table = (Word**) malloc (capacity * sizeof(Word*));
-        clear();
+        for (unsigned i=0 ; i<capacity ; i++) table[i] = 0;
     }
 
     ~WordHashTable()
@@ -99,16 +174,12 @@ public:
         free(table);
     }
 
-    void clear ()
-    {
-         for (unsigned i=0 ; i<capacity ; i++) table[i] = 0;
-    }
-
     /**
      * Inserts the word that begins in c1 and terminates in c2
      * If the word was NOT in the table we allocate space for the word,
      * copy the word and store the address. If the word was already in
-     * the table we do nothing.
+     * the table we store nothing.
+     *
      *  @param c1 The first char of the string to insert.
      *  @param c2 One char past the last char of the string to insert.
      *  @param c2 One char past the last char of the string to insert.
@@ -132,25 +203,6 @@ public:
         return false;
     }
 
-    /**
-     * Inserts a word in the table. Space is NEVER allocated.
-     * If the word doesnt exist we just store the pointer.
-     *  @return true if a new Word was created or false if an equivalent Word already existed
-     */
-    bool insert (Word* word)
-    {
-        lock();
-        unsigned index = hash(word);
-        while (table[index] && word->equals(table[index])) index = (index+1) % capacity;
-        if (!table[index]) {
-            table[index] = word;
-            unlock();
-            return true;
-        }
-        unlock();
-        return false;
-    }
-
     Word* getWord(unsigned index) const
     {
         if (index>=capacity) return NULL;
@@ -166,6 +218,7 @@ class IndexHashTable
     unsigned            capacity;
     unsigned            numUnits;
     unsigned            bitsPerUnit;
+    bool                keepIndexVec;
     atomic_flag         guard=ATOMIC_FLAG_INIT;
 
     void lock() { while (guard.test_and_set(memory_order_acquire)); }
@@ -173,18 +226,21 @@ class IndexHashTable
     void unlock() { guard.clear(std::memory_order_release);}
 
 public:
-    IndexHashTable(unsigned _capacity)
+    IndexHashTable(unsigned _capacity, bool _keepIndexVec=true)
     {
+        keepIndexVec = _keepIndexVec;
         capacity = _capacity;
         bitsPerUnit = (sizeof(unit) * 8);
         numUnits = capacity/bitsPerUnit;
         if (capacity%bitsPerUnit) numUnits++;                   // An to capacity den einai akeraio pollaplasio tou bitsPerUnit, tote theloume allo ena unit.
         units = (unit*) malloc ( numUnits*sizeof(unit));        // Allocate space with capacity bits. (NOT BYTES, BITS!)
+        if (units==0)
         for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;
     }
 
     ~IndexHashTable()
     {
+        fprintf(stderr, "Free IndexHashtable! \n"); fflush(stderr);
         free(units);
     }
 
@@ -203,10 +259,16 @@ public:
         }
         else {
             units[unit_offs] |= mask;
-            indexVec.push_back(index);
+            if (keepIndexVec) indexVec.push_back(index);
             unlock();
             return true;
         }
+    }
+
+    void clear ()
+    {
+        for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;
+        indexVec.clear();
     }
 
 };
@@ -216,9 +278,6 @@ struct PendingDoc
     DocID           id;
     char            *str;
     IndexHashTable  *wordIndices;
-
-    PendingDoc() { wordIndices=NULL;}
-    ~PendingDoc() { if (wordIndices!=NULL) delete wordIndices;}
 };
 
 struct DocResult
