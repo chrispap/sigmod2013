@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <vector>
 #include <set>
-#include <atomic>
+#include <pthread.h>
 
 using namespace std;
 
@@ -136,9 +136,10 @@ struct Query
 
 class WordHashTable
 {
-    Word**          table;
-    unsigned        capacity;
-    atomic_flag     guard=ATOMIC_FLAG_INIT;
+    Word**              table;
+    unsigned            capacity;
+    unsigned            mSize;
+    pthread_mutex_t     mutex;
 
     unsigned hash(const char *c1, const char *c2) const
     {
@@ -157,13 +158,15 @@ class WordHashTable
         return val;
     }
 
-    void lock() { while (guard.test_and_set(memory_order_acquire)); }
+    void lock() { pthread_mutex_lock(&mutex); }
 
-    void unlock() { guard.clear(std::memory_order_release); }
+    void unlock() { pthread_mutex_unlock(&mutex); }
 
 public:
     WordHashTable(unsigned _capacity)
     {
+        pthread_mutex_init(&mutex,   NULL);
+        mSize=0;
         capacity = _capacity;
         table = (Word**) malloc (capacity * sizeof(Word*));
         for (unsigned i=0 ; i<capacity ; i++) table[i] = 0;
@@ -187,19 +190,20 @@ public:
      */
     bool insert (const char *c1, const char *c2, unsigned* inserted_word_index, Word** inserted_word)
     {
-        //~ lock();
+        lock();
         unsigned index = hash(c1, c2);
         while (table[index] && !table[index]->equals(c1, c2)) index = (index+1) % capacity;
         if (!table[index]) {
             table[index] = new Word(c1, c2);
+            mSize++;
             *inserted_word_index = index;
             *inserted_word = table[index];
-            //~ unlock();
+            unlock();
             return true;
         }
         *inserted_word_index = index;
         *inserted_word = table[index];
-        //~ unlock();
+        unlock();
         return false;
     }
 
@@ -208,6 +212,9 @@ public:
         if (index>=capacity) return NULL;
         else return table[index];
     }
+
+    unsigned size() const { return mSize; }
+
 };
 
 class IndexHashTable
@@ -218,16 +225,19 @@ class IndexHashTable
     unsigned            capacity;
     unsigned            numUnits;
     unsigned            bitsPerUnit;
+    unsigned            mSize;
+    pthread_mutex_t     mutex;
     bool                keepIndexVec;
-    atomic_flag         guard=ATOMIC_FLAG_INIT;
 
-    void lock() { while (guard.test_and_set(memory_order_acquire)); }
+    void lock() { pthread_mutex_lock(&mutex); }
 
-    void unlock() { guard.clear(std::memory_order_release);}
+    void unlock() { pthread_mutex_unlock(&mutex); }
 
 public:
     IndexHashTable(unsigned _capacity, bool _keepIndexVec=true)
     {
+        pthread_mutex_init(&mutex,   NULL);
+        mSize=0;
         keepIndexVec = _keepIndexVec;
         capacity = _capacity;
         bitsPerUnit = (sizeof(unit) * 8);
@@ -236,7 +246,6 @@ public:
         units = (unit*) malloc ( numUnits*sizeof(unit));        // Allocate space with capacity bits. (NOT BYTES, BITS!)
         if (units==0)
         for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;
-        indexVec.reserve(1024);
     }
 
     ~IndexHashTable()
@@ -258,6 +267,7 @@ public:
         }
         else {
             units[unit_offs] |= mask;
+            mSize++;
             if (keepIndexVec) indexVec.push_back(index);
             //~ unlock();
             return true;
