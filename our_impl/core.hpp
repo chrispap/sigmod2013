@@ -187,19 +187,19 @@ public:
      */
     bool insert (const char *c1, const char *c2, unsigned* inserted_word_index, Word** inserted_word)
     {
-        lock();
+        //~ lock();
         unsigned index = hash(c1, c2);
         while (table[index] && !table[index]->equals(c1, c2)) index = (index+1) % capacity;
         if (!table[index]) {
             table[index] = new Word(c1, c2);
             *inserted_word_index = index;
             *inserted_word = table[index];
-            unlock();
+            //~ unlock();
             return true;
         }
         *inserted_word_index = index;
         *inserted_word = table[index];
-        unlock();
+        //~ unlock();
         return false;
     }
 
@@ -236,6 +236,7 @@ public:
         units = (unit*) malloc ( numUnits*sizeof(unit));        // Allocate space with capacity bits. (NOT BYTES, BITS!)
         if (units==0)
         for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;
+        indexVec.reserve(1024);
     }
 
     ~IndexHashTable()
@@ -247,19 +248,18 @@ public:
 
     bool insert (unsigned index)
     {
-        if (index >= capacity) {fprintf(stderr, "CANNOT STORE INDEX %u (TOO LARGE) \n", index); fflush(stderr); return false;}
-        lock();
+        //~ lock();
         unsigned unit_offs = index / bitsPerUnit;
         unsigned unit_bit  = index % bitsPerUnit;
         unit mask = 1 << unit_bit;
         if (units[unit_offs] & mask) {
-            unlock();
+            //~ unlock();
             return false;
         }
         else {
             units[unit_offs] |= mask;
             if (keepIndexVec) indexVec.push_back(index);
-            unlock();
+            //~ unlock();
             return true;
         }
     }

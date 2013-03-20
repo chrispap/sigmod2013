@@ -7,8 +7,8 @@
 #include <map>
 #include <set>
 
-#define HASH_SIZE    (1<<18)
-#define NUM_THREADS  3
+#define HASH_SIZE    (1<<16)
+#define NUM_THREADS  8
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -52,7 +52,7 @@ ErrorCode InitializeIndex()
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     mPendingIndex = 0;
-    mPhase = PH_01;
+    mPhase = PH_IDLE;
 
     for (long t=0; t< NUM_THREADS; t++) {
         int rc = pthread_create(&mThreads[t], &attr, ThreadFunc, (void *)t);
@@ -65,12 +65,11 @@ ErrorCode InitializeIndex()
 ErrorCode DestroyIndex()
 {
     pthread_mutex_lock(&mPendingDocs_mutex);
+    mPhase = PH_FINISHED;
     pthread_cond_broadcast(&mPendingDocs_cond);
     pthread_mutex_unlock(&mPendingDocs_mutex);
 
-    mPhase = PH_FINISHED;
-    int t;
-    for (t=0; t<NUM_THREADS; t++) {
+    for (long t=0; t<NUM_THREADS; t++) {
         pthread_join(mThreads[t], NULL);
     }
 
@@ -122,13 +121,9 @@ ErrorCode EndQuery(QueryID query_id)
 ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
 {
     char *new_doc_str = (char *) malloc((1+strlen(doc_str)));
-
-    if (!new_doc_str){
-        fprintf(stderr, "Could not allocate memory. \n");fflush(stderr);
-        return EC_FAIL;
-    }
-
+    if (!new_doc_str){ fprintf(stderr, "Could not allocate memory. \n");fflush(stderr); return EC_FAIL;}
     strcpy(new_doc_str, doc_str);
+
     Document newDoc;
     newDoc.id = doc_id;
     newDoc.str = new_doc_str;
@@ -139,7 +134,6 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     mPhase = PH_01;
     pthread_cond_broadcast(&mPendingDocs_cond);
     pthread_mutex_unlock(&mPendingDocs_mutex);
-
     return EC_SUCCESS;
 }
 
@@ -147,6 +141,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 {
     pthread_mutex_lock(&mPendingDocs_mutex);
     if (mPhase==PH_01) mPhase = PH_02;
+    pthread_cond_broadcast(&mPendingDocs_cond);
     pthread_mutex_unlock(&mPendingDocs_mutex);
 
     pthread_mutex_lock(&mAvailableDocs_mutex);
@@ -171,7 +166,6 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 void* ThreadFunc(void *param)
 {
     long myThreadId = (long) param;
-    fprintf(stderr, "Thread#%2ld Starting \n", myThreadId); fflush(stdout);
 
     while (1)
     {
@@ -184,6 +178,7 @@ void* ThreadFunc(void *param)
             }
 
             if ( mPendingDocs.empty() || mPendingIndex >= mPendingDocs.size()) {
+                pthread_cond_broadcast(&mPendingDocs_cond);
                 pthread_mutex_unlock(&mPendingDocs_mutex);
                 break;
             }
@@ -196,6 +191,7 @@ void* ThreadFunc(void *param)
             /* Parse the document */
             ParseDoc(doc, myThreadId);
             free(doc.str);
+            //~ printf("%u ", doc.id); fflush(NULL);
         }
 
 
@@ -208,26 +204,24 @@ void* ThreadFunc(void *param)
         /* LAST PHASE */
         if (myThreadId==0)
         {
+            pthread_mutex_lock(&mPendingDocs_mutex);
+            pthread_mutex_lock(&mAvailableDocs_mutex);
             for (Document &D : mPendingDocs){
                 delete D.wordIndices;
                 D.numRes=0;
-                pthread_mutex_lock(&mAvailableDocs_mutex);
                 mAvailableDocs.push(D);
-                pthread_mutex_unlock(&mAvailableDocs_mutex);
-                pthread_cond_broadcast(&mAvailableDocs_cond);
             }
-
-            pthread_mutex_lock(&mPendingDocs_mutex);
+            pthread_cond_broadcast(&mAvailableDocs_cond);
+            pthread_mutex_unlock(&mAvailableDocs_mutex);
             mPhase =PH_IDLE;
             mBatchWords.clear();
             mPendingDocs.clear();
             mPendingIndex=0;
+            pthread_cond_broadcast(&mPendingDocs_cond);
             pthread_mutex_unlock(&mPendingDocs_mutex);
         }
 
-
         pthread_barrier_wait(&mBarrier);
-
     }
 
     fprintf(stderr, "Thread#%2ld Exiting \n", myThreadId); fflush(stdout);
@@ -237,13 +231,12 @@ void* ThreadFunc(void *param)
 void ParseDoc(Document doc, const long thread_id)
 {
     const char *c1, *c2 = doc.str;
+    unsigned nw_index;
+    Word* nw;
 
     while(*c2==' ') ++c2;                                       // Skip any spaces
     for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
-
-        Word* nw;
-        unsigned nw_index;
         GWDB.insert(c1, c2, &nw_index, &nw);                    // We acquire the unique index for that word
         doc.wordIndices->insert(nw_index);                      // We store the word to the documents set of word indices
     }
