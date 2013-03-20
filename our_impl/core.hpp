@@ -240,7 +240,6 @@ public:
 
     ~IndexHashTable()
     {
-        fprintf(stderr, "Free IndexHashtable! \n"); fflush(stderr);
         free(units);
     }
 
@@ -273,16 +272,11 @@ public:
 
 };
 
-struct PendingDoc
+struct Document
 {
     DocID           id;
     char            *str;
     IndexHashTable  *wordIndices;
-};
-
-struct DocResult
-{
-    DocID       docID;
-    unsigned    numRes;
-    QueryID*    queryIDs;
+    unsigned        numRes;
+    QueryID*        matchingQueryIDs;
 };
