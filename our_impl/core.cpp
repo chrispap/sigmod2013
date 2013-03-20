@@ -8,7 +8,7 @@
 #include <set>
 
 #define HASH_SIZE    (1<<16)
-#define NUM_THREADS  8
+#define NUM_THREADS  7
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -23,7 +23,7 @@ static WordHashTable        GWDB(HASH_SIZE);                ///< Here store poin
 /* Documents */
 static queue<Document>      mAvailableDocs;                 ///< Documents that have been completely processed and are ready for delivery.
 static vector<Document>     mPendingDocs;                   ///< Documents that haven't yet been completely processed.
-static unsigned             mPendingIndex;                  ///< Points the next Document that should be acquired for parsing
+static volatile unsigned    mPendingIndex;                  ///< Points the next Document that should be acquired for parsing
 static IndexHashTable       mBatchWords(HASH_SIZE,false);   ///<
 
 /* Queries */
@@ -31,7 +31,7 @@ static map<QueryID,Query>   mActiveQueries;                 ///< Active Query ID
 static set<Word*>           mActiveApproxWords;             ///< Active words for approximate matcing
 
 /* Threading */
-static PHASE                mPhase;                         ///< Indicates in which phase the threads should be.
+static volatile PHASE       mPhase;                         ///< Indicates in which phase the threads should be.
 static pthread_t            mThreads[NUM_THREADS];          ///< Thread objects
 static pthread_mutex_t      mPendingDocs_mutex;             ///< Protect the access to pending Documents
 static pthread_cond_t       mPendingDocs_cond;              ///<
@@ -73,6 +73,7 @@ ErrorCode DestroyIndex()
         pthread_join(mThreads[t], NULL);
     }
 
+    printf("GWDB SIZE: %u \n", GWDB.size());
     return EC_SUCCESS;
 }
 
@@ -166,6 +167,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 void* ThreadFunc(void *param)
 {
     long myThreadId = (long) param;
+    //~ fprintf(stdout, "THREAD#%2ld STARTS \n", myThreadId); fflush(stdout);
 
     while (1)
     {
@@ -191,9 +193,9 @@ void* ThreadFunc(void *param)
             /* Parse the document */
             ParseDoc(doc, myThreadId);
             free(doc.str);
-            //~ printf("%u ", doc.id); fflush(NULL);
-        }
+            if (doc.id == 9600 ) {for (unsigned index: doc.wordIndices->indexVec) fprintf(stderr, "%s\n", GWDB.getWord(index)->txt);}
 
+        }
 
         /* FINISH DETECTED */
         if (mPhase == PH_FINISHED) break;
@@ -224,7 +226,7 @@ void* ThreadFunc(void *param)
         pthread_barrier_wait(&mBarrier);
     }
 
-    fprintf(stderr, "Thread#%2ld Exiting \n", myThreadId); fflush(stdout);
+    //~ fprintf(stdout, "THREAD#%2ld EXITS \n", myThreadId); fflush(stdout);
     return NULL;
 }
 
