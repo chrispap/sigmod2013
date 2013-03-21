@@ -126,14 +126,6 @@ struct Word
 
 };
 
-struct Query
-{
-    MatchType       type;
-    char            dist;
-    char            numWords;
-    Word*           words[MAX_QUERY_WORDS];
-};
-
 class WordHashTable
 {
     Word**              table;
@@ -257,19 +249,19 @@ public:
 
     bool insert (unsigned index)
     {
-        //~ lock();
+        lock();
         unsigned unit_offs = index / bitsPerUnit;
         unsigned unit_bit  = index % bitsPerUnit;
         unit mask = 1 << unit_bit;
         if (units[unit_offs] & mask) {
-            //~ unlock();
+            unlock();
             return false;
         }
         else {
             units[unit_offs] |= mask;
             mSize++;
             if (keepIndexVec) indexVec.push_back(index);
-            //~ unlock();
+            unlock();
             return true;
         }
     }
@@ -280,6 +272,14 @@ public:
         indexVec.clear();
     }
 
+};
+
+struct Query
+{
+    MatchType       type;
+    char            dist;
+    char            numWords;
+    Word*           words[MAX_QUERY_WORDS];
 };
 
 struct Document
