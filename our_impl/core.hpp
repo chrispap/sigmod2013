@@ -37,10 +37,11 @@ struct Word
 
     bool equals(Word* w) const
     {
-        const long *i1= (long*) txt;
-        const long *i2= (long*) w->txt;
-        while ( i1!=(long*)(txt+(MAX_WORD_LENGTH+1)) && *i1==*i2) {++i1; ++i2;}
-        if (i1!=(long*)(txt+(MAX_WORD_LENGTH+1))) return true;
+        if (this==w) return true;
+        const int *i1= (int*) txt;
+        const int *i2= (int*) w->txt;
+        while ( i1!=(int*)(txt+(MAX_WORD_LENGTH+1)) && *i1==*i2) {++i1; ++i2;}
+        if (i1!=(int*)(txt+(MAX_WORD_LENGTH+1))) return true;
         else return false;
     }
 
@@ -236,7 +237,7 @@ public:
         numUnits = capacity/bitsPerUnit;
         if (capacity%bitsPerUnit) numUnits++;                   // An to capacity den einai akeraio pollaplasio tou bitsPerUnit, tote theloume allo ena unit.
         units = (unit*) malloc ( numUnits*sizeof(unit));        // Allocate space with capacity bits. (NOT BYTES, BITS!)
-        if (units==0)
+        if (units==0) {fprintf(stderr, "Could not allocate memory for IndexHashTable"); exit(-1);}
         for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;
     }
 

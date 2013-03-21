@@ -160,7 +160,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     *p_doc_id = res.id;
     *p_num_res = res.numRes;
     *p_query_ids = res.matchingQueryIDs;
-    printf("Doc %-4u delivered \n",  res.id);fflush(NULL);
+    //~ printf("Doc %-4u delivered \n",  res.id);fflush(NULL);
     pthread_cond_broadcast(&mReadyDocs_cond);
     pthread_mutex_unlock(&mReadyDocs_mutex);
     return EC_SUCCESS;
@@ -201,7 +201,8 @@ void* Thread(void *param)
             mParsedDocs.push_back(doc);
             pthread_mutex_unlock(&mParsedDocs_mutex);
 
-            if (doc.id == 6562 ) {for (unsigned index: doc.wordIndices->indexVec) fprintf(stderr, "%s\n", GWDB.getWord(index)->txt);}
+            /// TEST
+            /// if (doc.id == 6562 ) {for (unsigned index: doc.wordIndices->indexVec) fprintf(stderr, "%s\n", GWDB.getWord(index)->txt);}
         }
 
         pthread_barrier_wait(&mBarrier);
