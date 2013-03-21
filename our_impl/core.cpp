@@ -8,7 +8,7 @@
 #include <set>
 
 #define HASH_SIZE    (1<<18)
-#define NUM_THREADS  8
+#define NUM_THREADS  7
 
 enum PHASE { PH_01, PH_02, PH_FINISHED };
 
@@ -19,7 +19,7 @@ static void*    Thread      (void *param);
 static void     ParseDoc    (Document &doc, const long thread_id);
 
 static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to e v e r y single word encountered.
-static int batch_no=1;
+
 /* Documents */
 static queue<Document>      mPendingDocs;                   ///< Documents that haven't yet been touched at all.
 static vector<Document>     mParsedDocs;                    ///< Documents that have been parsed.
