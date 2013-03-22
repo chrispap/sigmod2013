@@ -267,10 +267,13 @@ public:
         }
     }
 
+    unsigned size() const {return mSize;}
+
     void clear ()
     {
         for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;
         indexVec.clear();
+        mSize=0;
     }
 
 };
