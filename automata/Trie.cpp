@@ -1,7 +1,9 @@
+#include <cstdlib>
 #include <cstdio>
 #include <cstdlib>
 #include <cctype>
 #include <cstring>
+#include <sys/time.h>
 
 #define MAX_WORD_LENGTH 31
 
@@ -109,8 +111,7 @@ public:
 
 };
 
-
-void test (Trie &trie)
+int test (Trie &trie)
 {
     const char* words_in[] = {
         "chris",
@@ -141,14 +142,25 @@ void test (Trie &trie)
         if (trie.searchWord(w))
             printf("Find word: %s although it has NOT been inserted. \n", w);
 
+    return 0;
 }
 
-int main()
+int load (Trie &trie, const char* filename)
 {
-    Trie myTrie;
+    char W[32];
+    int count=0;
+    FILE* file = fopen(filename, "rt");
+    if (!file) return -1;
+    while (EOF != fscanf(file,"%s", W)) {
+        trie.insertWord(W);
+        count++;
+    }
+    fclose(file);
+    return count;
+}
 
-    test(myTrie);
-
+void ui (Trie &trie)
+{
     int res, select;
     char str[MAX_WORD_LENGTH];
 
@@ -171,20 +183,20 @@ int main()
         case 1:
             printf("Enter the word you want to insert(up to 32 chars):\n");
             scanf("%s",str);
-            myTrie.insertWord(str);
+            trie.insertWord(str);
             printf("The word is inserted properly.\n");
             break;
         case 2:
             printf("Enter the word you want to serch for(up to 32 chars):\n");
             scanf("%s",str);
-            res = myTrie.searchWord(str);
-            if(res == 1)
-            printf("The word exists in the dictionary.\n");
-            else if(res == -1)
-            printf("Sorry, the word does not exist in the dictionary.\n");
+            res = trie.searchWord(str);
+            if (res)
+                printf("The word exists in the dictionary.\n");
+            else
+                printf("Sorry, the word does not exist in the dictionary.\n");
             break;
         case 3:
-            myTrie.print();
+            trie.print();
             break;
         default:
             printf("Invalid choice \n");
@@ -192,5 +204,44 @@ int main()
 
     } while (select != 0);
 
+}
+
+int GetClockTimeInMilliSec()
+{
+    struct timeval t2; gettimeofday(&t2,NULL);
+    return t2.tv_sec*1000+t2.tv_usec/1000;
+}
+
+void PrintTime(int milli_sec)
+{
+    int v=milli_sec;
+    int hours=v/(1000*60*60); v%=(1000*60*60);
+    int minutes=v/(1000*60); v%=(1000*60);
+    int seconds=v/1000; v%=1000;
+    int milli_seconds=v;
+    int first=1;
+    printf("%d[", milli_sec);
+    if(hours) {if(!first) printf(":"); printf("%dh", hours); first=0;}
+    if(minutes) {if(!first) printf(":"); printf("%dm", minutes); first=0;}
+    if(seconds) {if(!first) printf(":"); printf("%ds", seconds); first=0;}
+    if(milli_seconds) {if(!first) printf(":"); printf("%dms", milli_seconds); first=0;}
+    printf("]");
+}
+
+int main(int argc, char* argv[])
+{
+    Trie myTrie;
+
+    if (argc > 1) {
+        int v=GetClockTimeInMilliSec();
+        int count = 0;
+        count += load(myTrie, argv[1]);
+        if ( count >=0 ) {
+            v=GetClockTimeInMilliSec()-v;
+            printf("Loaded %d words in: ", count); PrintTime(v); printf("\n");
+        }
+    }
+
+    ui(myTrie);
     return 0;
 }
