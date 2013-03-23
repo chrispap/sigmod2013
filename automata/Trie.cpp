@@ -236,6 +236,15 @@ int main(int argc, char* argv[])
         int v=GetClockTimeInMilliSec();
         int count = 0;
         count += load(myTrie, argv[1]);
+        count += load(myTrie, argv[1]);
+        count += load(myTrie, argv[1]);
+        count += load(myTrie, argv[1]);
+        count += load(myTrie, argv[1]);
+        count += load(myTrie, argv[1]);
+        count += load(myTrie, argv[1]);
+        count += load(myTrie, argv[1]);
+        count += load(myTrie, argv[1]);
+        count += load(myTrie, argv[1]);
         if ( count >=0 ) {
             v=GetClockTimeInMilliSec()-v;
             printf("Loaded %d words in: ", count); PrintTime(v); printf("\n");
