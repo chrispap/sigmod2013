@@ -1,8 +1,12 @@
 #include <cstdlib>
 #include <cstdio>
 #include <sys/time.h>
-
 #include "DFA.hpp"
+
+/**
+ * Compile with:
+ *      g++ -std=c++11 -Wall -O3 -g test.cpp -o dfa
+ */
 
 int GetClockTimeInMilliSec()
 {
@@ -26,21 +30,59 @@ void PrintTime(int milli_sec)
     printf("]");
 }
 
-int load (TrieDFA &trie, const char* filename)
+const char* words_in[] = {
+    "chris",
+    "christos",
+    "mariaki",
+    "maria",
+    "xxfood",
+};
+
+const char* words_not_in[] = {
+    "abc",
+    "ch",
+    "mar",
+    "c",
+    "m",
+};
+
+int loadWords (DFATrie &trie)
+{
+    for (const char *w : words_in) trie.insertWord(w);
+
+    for (const char *w : words_in)
+        if (!trie.searchWord(w)) printf(">> Did not find word: %s although it has been inserted. \n", w);
+
+    for (const char *w : words_not_in)
+        if (trie.searchWord(w)) printf(">> Find word: %s although it has NOT been inserted. \n", w);
+
+    return 0;
+}
+
+int loadFile (DFATrie &trie, const char* filename)
 {
     char W[32];
     int count=0;
     FILE* file = fopen(filename, "rt");
     if (!file) return -1;
+
+    int v=GetClockTimeInMilliSec();
     while (EOF != fscanf(file,"%s", W)) {
         if (trie.insertWord(W))
             count++;
     }
+
+    if ( count >=0 ) {
+        printf(">> Loaded %d unique words in: ", count);
+        PrintTime(v=GetClockTimeInMilliSec()-v);
+        printf("\n\n");
+    }
+
     fclose(file);
     return count;
 }
 
-void ui (TrieDFA &trie)
+void menu (DFATrie &trie)
 {
     int res, select;
     char str[32];
@@ -81,31 +123,21 @@ void ui (TrieDFA &trie)
 
 int main(int argc, char* argv[])
 {
-    TrieDFA myTrie;
+    DFATrie trie;
 
-    if (argc > 1) {
-        int v=GetClockTimeInMilliSec();
-        int count = 0;
-        count += load(myTrie, argv[1]);
-        if ( count >=0 ) printf(">> Loaded %d words in: ", count); PrintTime(v=GetClockTimeInMilliSec()-v); printf("\n");
-    }
+    /* Load some hard-coded words */
+    loadWords(trie);
 
-    printf(">> Trie now contains %d words. \n", myTrie.wordCount());
-    printf(">> Trie now contains %d states/nodes. \n", myTrie.stateCount());
+    /* Load many words from a file */
+   loadFile(trie, "query_words.txt");
 
-    //~ LevensteinAutomaton L("food", 2);
+    printf(">> Trie now contains %d words. \n", trie.wordCount());
+    printf(">> Trie now contains %d states/nodes. \n\n", trie.stateCount());
 
-    NFA &L = myTrie;
-    set<StateIndex> states;
+    /* Check for matches */
+    trie.match("food", 2);
 
-    int step=0;
-    L.appendInitState(states);
-    printf("STEP #%d: {", step); for(StateIndex i : states) printf("%2d, ", i); printf("}  - %s \n", L.isFinalState(states)? "Final State!" : "NOT Final State.");
 
-    for (step=1; step<8; step++) {
-        L.makeTransitions(states);
-        printf("STEP #%d: {", step); for(StateIndex i : states) printf("%2d, ", i); printf("}  - %s \n", L.isFinalState(states)? "Final State!" : "NOT Final State.");
-    }
-
+    menu(trie);
     return 0;
 }
