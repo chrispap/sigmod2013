@@ -28,15 +28,41 @@ void PrintTime(int milli_sec)
     if(minutes) {if(!first) printf(":"); printf("%dm", minutes); first=0;}
     if(seconds) {if(!first) printf(":"); printf("%ds", seconds); first=0;}
     if(milli_seconds) {if(!first) printf(":"); printf("%dms", milli_seconds); first=0;}
-    printf("]");
+    printf("]\n");
 }
 
 const char* words_in[] = {
-    "chris",
+    "abcdefghijklmnop",
+    "abcdefghijklmno",
+    "abcdefghijklmn",
+    "abcdefghijklm",
+    "abcdefghijkl",
+    "abcdefghijk",
+    "abcdefghij",
+    "abcdefghi",
+    "abcdefgh",
+    "abcdefg",
+    "abcdef",
+    "abcde",
+    "abcd",
     "christos",
+    "christo",
+    "christ",
+    "chris",
+    "chri",
+    "chr",
     "mariaki",
+    "mariak",
     "maria",
-    "xxfood",
+    "mari",
+    "foodxxx",
+    "foodxx",
+    "foodx",
+    "food",
+    "fod",
+    "foo",
+    "ood",
+    "oo",
 };
 
 const char* words_not_in[] = {
@@ -76,7 +102,6 @@ int loadFile (DFATrie &trie, const char* filename)
     if ( count >=0 ) {
         printf(">> Loaded %d unique words in: ", count);
         PrintTime(v=GetClockTimeInMilliSec()-v);
-        printf("\n");
     }
 
     fclose(file);
@@ -124,19 +149,29 @@ void menu (DFATrie &trie)
 
 int main(int argc, char* argv[])
 {
+    /* Populate the trie */
     DFATrie trie;
-
-    /* Load some hard-coded words */
-    loadWords(trie);
-
-    /* Load many words from a file */
-    //~ loadFile(trie, "query_words.txt");
-
+    loadWords(trie);                    // Load the global array `words_in`
+    loadFile(trie, "query_words.txt");  // Load the file
     printf(">> Trie now contains %d words. \n", trie.wordCount());
     printf(">> Trie now contains %d states. \n\n", trie.stateCount());
 
     /* Check for matches */
-    trie.match("food", 1);
+    const char* W = "chris";
+    int t=3;
+
+    int v=GetClockTimeInMilliSec();
+    DFALevenstein dfaW(NFALevenstein (W, t));
+    printf(">> DFA Constructed in: ");PrintTime(v=GetClockTimeInMilliSec()-v);
+    printf("\n");
+
+    v=GetClockTimeInMilliSec();
+    for (const char *w : words_in) {
+        dfaW.evaluateInput(w);
+        printf("%s/%d - %-16s %s \n", W, t, w, dfaW.evaluateInput(w)!=NO_TRANS ? "YES! " : "NO" );
+    }
+
+    PrintTime(v=GetClockTimeInMilliSec()-v);
 
     //~ menu(trie);
     return 0;

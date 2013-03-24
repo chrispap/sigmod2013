@@ -7,6 +7,8 @@
 #include <vector>
 #include <set>
 
+#include <csignal>
+
 #include "indexHashTable.hpp"
 
 #define NO_TRANS -1
@@ -104,8 +106,8 @@ public:
     bool epsilonExpand (IndexHashTable &state_set) const {
         bool flag=false;
         /* Append epsilon transitions recursively for the given set */
-        for (StateIndex i : state_set.indexVec) {
-            StateIndex ie = i;
+        for (unsigned i=0 ; i<state_set.indexVec.size() ; i++) {
+            StateIndex ie = state_set.indexVec[i];
             while ((ie=states[ie].epsilonTransition()) != NO_TRANS) {
                 state_set.insert(ie);
                 flag=true;
@@ -138,9 +140,17 @@ public:
     }
 
     void printStates (IndexHashTable &states) const {
-        printf("States {");
+        printf("{");
         for (StateIndex i : states.indexVec) printf("%2d, ", i);
         printf("} %s \n", isFinalState(states)? " <--" : "");
+    }
+
+    StateIndex evaluateInput (const char* str) const {
+        StateIndex cur=0;
+        for (int i=0 ; str[i] ; i++)
+            if ((cur=states[cur][str[i]]) == NO_TRANS) return NO_TRANS;
+        if (states[cur].isFinal()) return cur;
+        else return NO_TRANS;
     }
 
 protected:
@@ -191,10 +201,12 @@ public:
         for (int err=0 ; err<t ; err++) {
             i = err*(len+1)+cons;
             states[i].setStarTransitions(i+len+1);
-            states[i].setWord((void*) 0x01);      /// Important! This is a final state.
+            states[i].setWord((void*) 0x01);        /// Important! This is a final state.
             num_final_states++;
         }
 
+        i = (len+1)*(t+1)-1;
+        states[i].setWord((void*) 0x01);            /// Important! This is the case for matching with distance == threshold final state.
     }
 
 };
@@ -208,7 +220,6 @@ public:
      */
     DFALevenstein (const NFALevenstein &nfa) {
         int nfa_states_num = nfa.stateCount();
-        printf(">> NFA has %d states \n", nfa_states_num);
 
         vector<IndexHashTable> dfa_states;          // Here, I will keep track of the states to be processed
         unsigned stack_pointer;                     // Points to the state we processed so far
@@ -217,7 +228,9 @@ public:
         stack_pointer=0;
 
         nfa.loadStartState(dfa_states[0]);          // Load the start state of the NFA
-        nfa.printStates(dfa_states[0]);
+
+        printf(">> NFA has %d states \n", nfa_states_num);
+        printf(">> DFA Start State = NFA's "); nfa.printStates(dfa_states[0]);
 
         /* Here is done the whole thing... */
         IndexHashTable states_from_nfa (nfa_states_num);
@@ -227,30 +240,27 @@ public:
             for (char t='a' ; t<='z'; t++)
             {
                 states_from_nfa.clear();
-                if (!nfa.expand(dfa_states[stack_pointer], states_from_nfa, t)) continue;
+                nfa.expand(dfa_states[stack_pointer], states_from_nfa, t); //continue;
 
                 /* Check the new set with all the existing sets (DFA States) */
-                bool already_seen=false;
-                for (IndexHashTable &existing : dfa_states) {
-                    if (IndexHashTable::equals(states_from_nfa, existing)) {
-                        already_seen=true; break;
-                    }
+                StateIndex index;
+                for (index=0 ; index!=(StateIndex)dfa_states.size() ; ++index)
+                    if (IndexHashTable::equals(states_from_nfa, dfa_states[index])) break;
+
+                if (index==(StateIndex)dfa_states.size()) {     // Here we have a new state for the DFA
+                    states.emplace_back();
+                    if (nfa.isFinalState(states_from_nfa))
+                        states.back().setWord((void*)0x01);
+                    dfa_states.push_back(states_from_nfa);
                 }
 
-                if (already_seen) continue;
-
-                /* Here we have a new state for the DFA */
-                states.emplace_back();
-                if (nfa.isFinalState(states_from_nfa))
-                    states.back().setWord((void*)0x01);
-
-                dfa_states.push_back(states_from_nfa);
-
+                states[stack_pointer].setLetterTransition(t, index);
             }
 
             stack_pointer++;
         }
 
+        printf(">> DFA has %d states \n", stateCount());
     }
 
 };
@@ -276,11 +286,7 @@ public:
     }
 
     bool searchWord (const char* str) const {
-        StateIndex cur=0;
-        for (int i=0 ; str[i] ; i++)
-            if ((cur=states[cur][str[i]]) == NO_TRANS) return false;
-        if (states[cur].getWord()==NULL) return false;
-        else return true;
+        return evaluateInput(str)-NO_TRANS; // if evaluate_input returns N_TRANS we return 0 --> false! :o
     }
 
     unsigned wordCount () const {
@@ -292,7 +298,6 @@ public:
         DFALevenstein L(NFALevenstein (str, t));
 
         printf("DFA: %s/%d  =>  %d states \n", str, t, L.stateCount());
-
 
     }
 
