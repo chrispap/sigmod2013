@@ -22,7 +22,6 @@ while(q = new_element_in(currentstate)) {
         set<statesfromnfa> = FIND_TRANS_ON_NFA(q,character);
         if(!empty(set<statesfromnfa>)) {
             \\this is a new state for the DFA
-            Q'_i = FIND_EPSILON_SET(set<statesfromnfa>);
             if(statesin(Q'_i) in F) Q'_i in F';
             add(set<currentstate>,Q'_i);
             addtransition(Q'_i, character);
@@ -49,6 +48,7 @@ set<statesfromnfa> FIND_TRANS_ON_NFA(set<q>,character) {
             }
         }
     }
-    /*Nomizw prepei na ginei kai auto edw.*/
+    /* Nomizw prepei na ginei kai auto edw.*/
+    /* Nomizw oti kala nomizeis :) */
     return FIND_EPSILON_SET(statesfromnfa);
 }

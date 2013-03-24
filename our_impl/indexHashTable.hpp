@@ -4,17 +4,18 @@
 #include <vector>
 #include <pthread.h>
 
+#define BITS_PER_UNIT (sizeof(unit)*8)
+
 using namespace std;
 
 class IndexHashTable
 {
     typedef unsigned unit;
 
-    bool                keepIndexVec;
-    unit*               units; //TODO: Maybe if it becomes stl::vector it will have better performance ?
-    unsigned            capacity;
+    unit*               units;          //TODO: Maybe if it becomes stl::vector it will have better performance ?
     unsigned            numUnits;
-    unsigned            bitsPerUnit;
+    bool                keepIndexVec;
+    unsigned            capacity;
     unsigned            mSize;
     pthread_mutex_t     mutex;
 
@@ -29,17 +30,30 @@ class IndexHashTable
 public:
     vector<unsigned> indexVec;
 
-    IndexHashTable (unsigned _capacity, bool _keepIndexVec=true) {
+    IndexHashTable (unsigned _capacity, bool _keepIndexVec=true) :
+        keepIndexVec(_keepIndexVec),
+        capacity(_capacity),
+        mSize(0)
+    {
         pthread_mutex_init(&mutex,   NULL);
-        mSize=0;
-        keepIndexVec = _keepIndexVec;
-        capacity = _capacity;
-        bitsPerUnit = (sizeof(unit) * 8);
-        numUnits = capacity/bitsPerUnit;
-        if (capacity%bitsPerUnit) numUnits++; // An to capacity den einai akeraio pollaplasio tou bitsPerUnit, tote theloume allo ena unit.
-        units = (unit*) malloc ( numUnits*sizeof(unit)); // Allocate space with capacity bits. (NOT BYTES, BITS!)
+        numUnits = capacity/BITS_PER_UNIT;
+        if (capacity%BITS_PER_UNIT) numUnits++;     // An to capacity den einai akeraio pollaplasio tou BITS_PER_UNIT, tote theloume allo ena unit.
+        units = (unit*) malloc (numUnits*sizeof(unit));     // Allocate space with capacity bits. (NOT BYTES, BITS!)
         if (units==0) {fprintf(stderr, "Could not allocate memory for IndexHashTable"); exit(-1);}
         for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;
+    }
+
+    IndexHashTable (const IndexHashTable &from) :
+        numUnits(from.numUnits),
+        keepIndexVec(from.keepIndexVec),
+        capacity(from.capacity),
+        mSize(from.mSize),
+        indexVec(from.indexVec)
+    {
+        pthread_mutex_init(&mutex,   NULL);
+        units = (unit*) malloc (numUnits*sizeof(unit));
+        if (units==0) {fprintf(stderr, "Could not allocate memory for IndexHashTable"); exit(-1);}
+        for (unsigned i=0 ; i<numUnits ; i++) units[i]=from.units[i];
     }
 
     ~IndexHashTable () {
@@ -48,8 +62,8 @@ public:
 
     bool insert (int index) {
         lock();
-        unsigned unit_offs = index / bitsPerUnit;
-        unsigned unit_bit  = index % bitsPerUnit;
+        unsigned unit_offs = index / BITS_PER_UNIT;
+        unsigned unit_bit  = index % BITS_PER_UNIT;
         unit mask = 1 << unit_bit;
         if (units[unit_offs] & mask) {
             unlock();
@@ -72,7 +86,7 @@ public:
         mSize=0;
     }
 
-    static bool equal (const IndexHashTable &h1, const IndexHashTable &h2) {
+    static bool equals (const IndexHashTable &h1, const IndexHashTable &h2) {
         unsigned max_units = h1.numUnits>h2.numUnits ? h1.numUnits : h2.numUnits;
         for (int unsigned i=0; i< max_units ; i++)
             if (h1.units[i]!=h2.units[i]) return false;

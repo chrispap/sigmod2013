@@ -136,7 +136,7 @@ int main(int argc, char* argv[])
     printf(">> Trie now contains %d states. \n\n", trie.stateCount());
 
     /* Check for matches */
-    trie.match("chrsto", 3);
+    trie.match("food", 1);
 
     //~ menu(trie);
     return 0;
