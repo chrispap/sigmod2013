@@ -1,11 +1,12 @@
-#~/bin/bash
+#!/bin/bash
 
 L=1
+
 while :
 do
-    ./testdriver test_data/big_test.txt 2> err.txt
-    sort err.txt > doc6562.txt
-    diff doc6562.txt doc6562_sorted_unique.txt > diff.txt
+    ./testdriver test_data/big_test.txt 2> err.txt > out.txt
+    sort err.txt > log/doc6562.txt
+    diff log/doc6562.txt log/doc6562_sorted_unique.txt > log/diff.txt
 
     if [ $? -ne 0 ]
     then
@@ -13,6 +14,6 @@ do
         break
     fi
 
-    echo "Loop" $L
+    echo "Loop" $L "OK"
     L=$[L+1]
 done

@@ -1,10 +1,16 @@
 #!/bin/bash
 
+L=1
+
 while :
-    do
-        ./testdriver
-        if [ $? -ne 0 ];
-        then
-            break
-        fi
+do
+    ./testdriver 2> err.txt > out.txt
+    if [ $? -ne 0 ];
+    then
+        break
+    fi
+
+    echo "Loop" $L "OK"
+    L=$[L+1]
+
 done

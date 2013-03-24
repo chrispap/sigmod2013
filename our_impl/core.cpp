@@ -206,7 +206,7 @@ void* Thread(void *param)
             pthread_mutex_unlock(&mParsedDocs_mutex);
 
             /// TEST
-            /// if (doc.id == 6562 ) {for (unsigned index: doc.wordIndices->indexVec) fprintf(stderr, "%s\n", GWDB.getWord(index)->txt);}
+            if (doc.id == 6562 ) {for (unsigned index: doc.wordIndices->indexVec) fprintf(stderr, "%s\n", GWDB.getWord(index)->txt);}
         }
 
         pthread_barrier_wait(&mBarrier);
