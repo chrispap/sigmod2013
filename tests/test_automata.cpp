@@ -1,11 +1,12 @@
 #include <cstdlib>
 #include <cstdio>
 #include <sys/time.h>
-#include "DFA.hpp"
+
+#include "../our_impl/automata.hpp"
 
 /**
  * Compile with:
- *      g++ -std=c++11 -Wall -O3 -g test.cpp -o dfa
+ *      g++ -std=c++11 -Wall -O3 -g test_automata.cpp -o test_automata
  */
 
 int GetClockTimeInMilliSec()
@@ -75,7 +76,7 @@ int loadFile (DFATrie &trie, const char* filename)
     if ( count >=0 ) {
         printf(">> Loaded %d unique words in: ", count);
         PrintTime(v=GetClockTimeInMilliSec()-v);
-        printf("\n\n");
+        printf("\n");
     }
 
     fclose(file);
@@ -129,15 +130,14 @@ int main(int argc, char* argv[])
     loadWords(trie);
 
     /* Load many words from a file */
-   loadFile(trie, "query_words.txt");
+    //~ loadFile(trie, "query_words.txt");
 
     printf(">> Trie now contains %d words. \n", trie.wordCount());
-    printf(">> Trie now contains %d states/nodes. \n\n", trie.stateCount());
+    printf(">> Trie now contains %d states. \n\n", trie.stateCount());
 
     /* Check for matches */
-    trie.match("food", 2);
+    trie.match("food", 1);
 
-
-    menu(trie);
+    //~ menu(trie);
     return 0;
 }

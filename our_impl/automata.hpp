@@ -202,6 +202,10 @@ public:
 class DFALevenstein : public NFA
 {
 public:
+    /**
+     * Converts NFA 2 FDA
+     * @param nfa The NFA automaton to convert
+     */
     DFALevenstein (const NFALevenstein &nfa) {
         int nfa_states_num = nfa.stateCount();
         printf(">> NFA has %d states \n", nfa_states_num);
@@ -209,8 +213,7 @@ public:
         vector<IndexHashTable> dfa_states;          // Here, I will keep track of the states to be processed
         unsigned stack_pointer;                     // Points to the state we processed so far
 
-        states.emplace_back();                      // Create the first state
-        dfa_states.emplace_back(nfa_states_num);
+        dfa_states.emplace_back(nfa_states_num);    // The starting state does not need to be created because it has already been taken care by parent constructor!
         stack_pointer=0;
 
         nfa.loadStartState(dfa_states[0]);          // Load the start state of the NFA

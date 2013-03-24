@@ -1,0 +1,10 @@
+#!/bin/bash
+
+while :
+    do
+        ./testdriver
+        if [ $? -ne 0 ];
+        then
+            break
+        fi
+done

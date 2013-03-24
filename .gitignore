@@ -1,9 +1,11 @@
+# Build products
 *.o
 *.so
-*.txt
 
 testdriver
 var
+log
+big_test.txt
 
 *project*
 *settings*

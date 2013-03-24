@@ -1,1 +1,0 @@
-./testdriver > out.txt && grep -E "Time=[0-9]+" out.txt
