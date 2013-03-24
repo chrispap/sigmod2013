@@ -44,7 +44,6 @@ const char* words_in[] = {
     "abcdefg",
     "abcdef",
     "abcde",
-    "abcd",
     "christos",
     "christo",
     "christ",
@@ -151,27 +150,32 @@ int main(int argc, char* argv[])
 {
     /* Populate the trie */
     DFATrie trie;
-    loadWords(trie);                    // Load the global array `words_in`
-    loadFile(trie, "query_words.txt");  // Load the file
+    loadWords(trie);
+    loadFile(trie, "query_words.txt");
     printf(">> Trie now contains %d words. \n", trie.wordCount());
     printf(">> Trie now contains %d states. \n\n", trie.stateCount());
 
     /* Check for matches */
-    const char* W = "chris";
+    const char* W = "christoferakos";
     int t=3;
 
+    /* Create the Levenstein Automaton for a word*/
     int v=GetClockTimeInMilliSec();
-    DFALevenstein dfaW(NFALevenstein (W, t));
+    DFALevenstein dfa(NFALevenstein (W, t));
     printf(">> DFA Constructed in: ");PrintTime(v=GetClockTimeInMilliSec()-v);
-    printf("\n");
 
+    /* Check a batch of words for matching */
+    int match_count=0;
     v=GetClockTimeInMilliSec();
-    for (const char *w : words_in) {
-        dfaW.evaluateInput(w);
-        printf("%s/%d - %-16s %s \n", W, t, w, dfaW.evaluateInput(w)!=NO_TRANS ? "YES! " : "NO" );
-    }
+    do {
+        for (const char *w : words_in) {
+            dfa.evaluateInput(w);
+            match_count++;
+            //~ printf("%s/%d - %-16s %s \n", W, t, w, dfa.evaluateInput(w)!=NO_TRANS ? "YES! " : "NO" );
+        }
+    } while (match_count<10000000);
+    printf("Did %d matches in ", match_count); PrintTime(v=GetClockTimeInMilliSec()-v);
 
-    PrintTime(v=GetClockTimeInMilliSec()-v);
 
     //~ menu(trie);
     return 0;
