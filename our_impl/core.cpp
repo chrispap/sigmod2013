@@ -1,11 +1,15 @@
 #include <core.h>
-#include "core.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <pthread.h>
 #include <queue>
 #include <map>
 #include <set>
+
+#include "core.hpp"
+#include "word.hpp"
+#include "wordHashTable.hpp"
+#include "indexHashTable.hpp"
 
 #define HASH_SIZE    (1<<18)
 #define NUM_THREADS  7
