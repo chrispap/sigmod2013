@@ -14,6 +14,10 @@ struct Word
     int             length;                         ///< Strlen(txt);
     unsigned        letterBits;                     ///< 1 bit for every char [a-z]
     DFALevenstein   *dfa;
+    /* maria */
+    set<DocID>      docSet;
+    DocID           firstDoc;
+    QueryID         firstQuery;
 
     /** Store the new word and populate the data structures */
     Word (const char *c1, const char *c2) :

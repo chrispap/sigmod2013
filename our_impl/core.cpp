@@ -1,10 +1,14 @@
 #include <core.h>
+#include "core.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <pthread.h>
 #include <queue>
 #include <map>
 #include <set>
+#include <cmath>
+#include <unordered_map>
+#include <utility>
 
 #include "core.hpp"
 #include "word.hpp"
@@ -29,7 +33,7 @@ static WordHashTable        GWDB(HASH_SIZE);                ///< Here store poin
 static queue<Document>      mPendingDocs;                   ///< Documents that haven't yet been touched at all.
 static vector<Document>     mParsedDocs;                    ///< Documents that have been parsed.
 static queue<Document>      mReadyDocs;                     ///< Documents that have been completely processed and are ready for delivery.
-static IndexHashTable       mBatchWords(HASH_SIZE,false);   ///< Words that have been already encountered in the current batch.
+static IndexHashTable       mBatchWords(HASH_SIZE,true);    ///< Words that have been already encountered in the current batch.
 static DFATrie              mTrie;
 
 /* Queries */
@@ -45,6 +49,8 @@ static pthread_cond_t       mPendingDocs_cond;              ///<
 static pthread_mutex_t      mReadyDocs_mutex;               ///< Protect the access to ready Documents.
 static pthread_cond_t       mReadyDocs_cond;                ///<
 static pthread_barrier_t    mBarrier;
+
+static unordered_map<pair<DocID,QueryID>, char> ResultsMap;
 
 /* Library Functions */
 ErrorCode InitializeIndex()
@@ -102,14 +108,21 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
         unsigned nw_index;
         GWDB.insert(c1, c2, &nw_index, &nw);                    // Store the word in the GWDB
 
+        /* <maria> */
+        mBatchWords.insert(nw_index);
+        if(nw->querySet[MT_EXACT_MATCH].empty())
+            nw->firstQuery = query_id;
         nw->querySet[match_type].insert(query_id);              // Update the appropriate query set based on the match_type
+        /* </maria> */
+
         new_query.words[num_words] = nw;                        // Add the word to the query
+
+        /*
         if (match_type != MT_EXACT_MATCH) {                     // ONLY for hamming | edit dist queries
             if (mApproxWords.insert(nw_index)) {                // Add the word to the set with the approximate words
                 nw->dfa = new DFALevenstein(nw->txt ,3);
             }
-
-        }
+        }*/
 
         num_words++;
     }
@@ -172,7 +185,6 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     *p_doc_id = res.id;
     *p_num_res = res.numRes;
     *p_query_ids = res.matchingQueryIDs;
-    //~ printf("Doc %-4u delivered \n",  res.id);fflush(NULL);
     pthread_cond_broadcast(&mReadyDocs_cond);
     pthread_mutex_unlock(&mReadyDocs_mutex);
     return EC_SUCCESS;
@@ -192,14 +204,12 @@ void* Thread(void *param)
             pthread_mutex_lock(&mPendingDocs_mutex);
             while (mPendingDocs.empty() && mPhase==PH_01 && mPhase!=PH_FINISHED)
                 pthread_cond_wait(&mPendingDocs_cond, &mPendingDocs_mutex);
-
             if (mPendingDocs.empty() || mPhase==PH_FINISHED )
             {
                 pthread_cond_broadcast(&mPendingDocs_cond);
                 pthread_mutex_unlock(&mPendingDocs_mutex);
                 break;
             }
-
             /* Get a document from the pending list */
             Document doc (mPendingDocs.front());
             mPendingDocs.pop();
@@ -210,47 +220,120 @@ void* Thread(void *param)
             ParseDoc(doc, myThreadId);
             free(doc.str);
             pthread_mutex_lock(&mParsedDocs_mutex);
+            doc.thread_limit = ceil( (double) doc.wordIndices->indexVec.size()/NUM_THREADS);
             mParsedDocs.push_back(doc);
             pthread_mutex_unlock(&mParsedDocs_mutex);
-
-            /** TEST */
-            //~ if (doc.id == 6562 ) {for (unsigned index: doc.wordIndices->indexVec) fprintf(stderr, "%s\n", GWDB.getWord(index)->txt);}
         }
 
+        /* <maria> */
         pthread_barrier_wait(&mBarrier);
+        /* </maria> */
 
         /* FINISH DETECTED */
         if (mPhase == PH_FINISHED) break;
 
         /* PHASE 2 */
+        /**
+         * Here, we update the GWDB Table, so that every word in it(note that the words are unique), has a set of
+         * the document ids where it appears. A corresponding Set exists in the word structure to keep track of
+         * the queries where it also belongs. The process is done simultaneously, where its thread works on the word
+         * set of a specific numbers of documents.
+         */
+        unsigned i;
+        unsigned DocIndex = 0;
+        while ( DocIndex < mParsedDocs.size() ) {
+            for (unsigned threadInd = 0; threadInd < mParsedDocs[DocIndex].thread_limit ; threadInd++) {
+                i = mParsedDocs[DocIndex].thread_limit*myThreadId + threadInd;
+                if(i >= mParsedDocs[DocIndex].wordIndices->indexVec.size()) break;
+                //~ mBatchWords.insert(mParsedDocs[DocIndex].wordIndices->indexVec[i]);
+                Word *w = GWDB.getWord(mParsedDocs[DocIndex].wordIndices->indexVec[i]);
+                if(w->docSet.empty())
+                    w->firstDoc = mParsedDocs[DocIndex].id;
+                w->docSet.insert(mParsedDocs[DocIndex].id);
+            }
+            DocIndex++;
+            pthread_barrier_wait(&mBarrier);
+        }
+
+        pthread_barrier_wait(&mBarrier);
+
+        /**
+         * The actual matching between documents and quieries. Each thread evaluates a number of words in the GWDB,
+         * based on the mBatchWords indexing.When a word in a document appears in a number of queries,
+         * we update properly the TableofResults (rows describe documents, columns queries).
+         * Be ware, we need synchronization in the updating of the table.
+         */
         if (myThreadId==0)
         {
+            unsigned thread_limit = (unsigned) ceil( (double) mBatchWords.indexVec.size()/NUM_THREADS);
+            i = 0;
+            set<DocID>::iterator itd, sd;
+            set<QueryID>::iterator itq, sq;
+
+            for (unsigned index = 0; index < thread_limit ; index++) {
+                i = thread_limit*myThreadId + index;
+                if(i >= mBatchWords.indexVec.size()) break;
+                Word *w = GWDB.getWord(mBatchWords.indexVec[i]);
+                for (itd = w->docSet.begin(); itd != w->docSet.end(); itd++) {
+                    for (itq = w->querySet[MT_EXACT_MATCH].begin(); itq != w->querySet[MT_EXACT_MATCH].end(); itq++) {
+                        ResultsMap[make_pair(*itd,*itq)]++;
+                    }
+                }
+            }
+
+            /**
+             * Need barrier in order for us to be sure that the ResultsMap is completely updated
+             * Every thread evaluates the possible matching between all the active queries and "its" documents.
+             */
+            i = 0;
+            unsigned local_numbers_docs = (unsigned) ceil((double) mParsedDocs.size()/NUM_THREADS);
+            int k;
+            for ( unsigned index = 0; index < local_numbers_docs ; index++) {
+                i = local_numbers_docs*myThreadId + index;
+                if(i >= mParsedDocs.size()) break;
+                Document &ready = mParsedDocs[i];
+                ready.matchingQueryIDs = (QueryID *)malloc(mActiveQueries.size()*sizeof(QueryID));
+                k=0;
+                DocID firstkey = ready.id;
+                for (std::map<QueryID,Query>::iterator it = mActiveQueries.begin(); it!=mActiveQueries.end(); ++it) {
+                    if (ResultsMap[make_pair(firstkey,it->first)] == it->second.numWords) {
+                        ready.matchingQueryIDs[k] = it->first;
+                        k++;
+                    }
+                }
+
+                ready.numRes = k;
+            }
+
+            /* END OF PHASE 2 */
+
+            /*
             for (Document &D : mParsedDocs) {
                 for (unsigned index : D.wordIndices->indexVec)
                     mTrie.insertWord(GWDB.getWord(index)->txt);
-            }
+            }*/
 
-        }
-
-        /* LAST PHASE */
-        if (myThreadId==0)
-        {
+            /* LAST PHASE */
             pthread_mutex_lock(&mReadyDocs_mutex);
             for (Document &D : mParsedDocs)
             {
                 delete D.wordIndices;
-                D.numRes=0;
                 mReadyDocs.push(D);
             }
+
             pthread_cond_broadcast(&mReadyDocs_cond);
             pthread_mutex_unlock(&mReadyDocs_mutex);
             mBatchWords.clear();
             mParsedDocs.clear();
+            ResultsMap.clear();
         }
 
+        /* <maria> */
         pthread_barrier_wait(&mBarrier);
+        /* </maria> */
     }
 
+    pthread_barrier_wait(&mBarrier);
     fprintf(stdout, "THREAD#%2ld EXITS \n", myThreadId); fflush(stdout);
     return NULL;
 }
