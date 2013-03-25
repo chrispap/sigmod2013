@@ -149,8 +149,8 @@ void TestSigmod(const char* test_file_str)
                 }
 
                 /*CHRIS*/
-                int SC=1;   /// ShortCircuit the check
-                int IGNR=0; /// Ignore incorrect results
+                int SC=0;   /// ShortCircuit the check
+                int IGNR=1; /// Ignore incorrect results
                 /* */
                 if(flag_error && !SC)
                 {
@@ -158,7 +158,7 @@ void TestSigmod(const char* test_file_str)
                     printf("Your answer is       : "); for(j=0;j<(int)num_res;j++) {if(j)printf(" "); printf("%u", query_ids[j]);} printf("\n");
                     printf("The correct answer is: "); for(j=0;j<(int)cur_results_size[doc_id-first_result];j++) {if(j)printf(" "); printf("%u", cur_results[doc_id-first_result][j]);} printf("\n");
                     fflush(NULL);
-                    if (IGNR) return;
+                    if (!IGNR) return;
                 }
 
                 cur_results_ret[doc_id-first_result]=true;
