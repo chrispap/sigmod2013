@@ -3,19 +3,23 @@
 
 #include <core.h>
 #include <set>
+#include "automata.hpp"
 
 using namespace std;
 
 struct Word
 {
-    int         length;                         ///< Strlen(txt);
-    unsigned    letterBits;                     ///< 1 bit for every char [a-z]
-    set<QueryID> querySet[3];                   ///< Sets of queries matching this word. One set for each MatchType
-    char        txt[MAX_WORD_LENGTH+1];         ///< The actual word :P
+    char            txt[MAX_WORD_LENGTH+1];         ///< The actual word :P
+    set<QueryID>    querySet[3];                    ///< Sets of queries matching this word. One set for each MatchType
+    int             length;                         ///< Strlen(txt);
+    unsigned        letterBits;                     ///< 1 bit for every char [a-z]
+    DFALevenstein   *dfa;
 
     /** Store the new word and populate the data structures */
-    Word (const char *c1, const char *c2) {
-        letterBits=0;
+    Word (const char *c1, const char *c2) :
+        letterBits(0),
+        dfa(NULL)
+    {
         int i=0;
         while (c1!=c2) {
             letterBits |= 1 << (*c1-'a');

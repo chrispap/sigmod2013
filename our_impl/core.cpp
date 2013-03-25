@@ -10,6 +10,7 @@
 #include "word.hpp"
 #include "wordHashTable.hpp"
 #include "indexHashTable.hpp"
+#include "automata.hpp"
 
 #define HASH_SIZE    (1<<18)
 #define NUM_THREADS  7
@@ -29,10 +30,11 @@ static queue<Document>      mPendingDocs;                   ///< Documents that 
 static vector<Document>     mParsedDocs;                    ///< Documents that have been parsed.
 static queue<Document>      mReadyDocs;                     ///< Documents that have been completely processed and are ready for delivery.
 static IndexHashTable       mBatchWords(HASH_SIZE,false);   ///< Words that have been already encountered in the current batch.
+static DFATrie              mTrie;
 
 /* Queries */
 static map<QueryID,Query>   mActiveQueries;                 ///< Active Query IDs.
-static set<Word*>           mActiveApproxWords;             ///< Active words for approximate matcing.
+static IndexHashTable       mApproxWords(HASH_SIZE,false);  ///< Active words for approximate matcing.
 
 /* Threading */
 static volatile PHASE       mPhase;                         ///< Indicates in which phase the threads should be.
@@ -79,7 +81,9 @@ ErrorCode DestroyIndex()
         pthread_join(mThreads[t], NULL);
     }
 
-    fprintf(stdout, "GWDB SIZE: %u \n", GWDB.size());
+    fprintf(stdout, "mTrie SIZE:        %u \n", mTrie.wordCount());
+    fprintf(stdout, "GWDB SIZE:         %u \n", GWDB.size());
+    fprintf(stdout, "mApproxWords SIZE: %u \n", mApproxWords.size());
     return EC_SUCCESS;
 }
 
@@ -100,8 +104,12 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 
         nw->querySet[match_type].insert(query_id);              // Update the appropriate query set based on the match_type
         new_query.words[num_words] = nw;                        // Add the word to the query
-        if (match_type != MT_EXACT_MATCH)                       // ONLY for hamming | edit dist queries
-            mActiveApproxWords.insert(nw);                      // Add the word to the set with the approximate words
+        if (match_type != MT_EXACT_MATCH) {                     // ONLY for hamming | edit dist queries
+            if (mApproxWords.insert(nw_index)) {                // Add the word to the set with the approximate words
+                nw->dfa = new DFALevenstein(nw->txt ,3);
+            }
+
+        }
 
         num_words++;
     }
@@ -205,8 +213,8 @@ void* Thread(void *param)
             mParsedDocs.push_back(doc);
             pthread_mutex_unlock(&mParsedDocs_mutex);
 
-            /// TEST
-            if (doc.id == 6562 ) {for (unsigned index: doc.wordIndices->indexVec) fprintf(stderr, "%s\n", GWDB.getWord(index)->txt);}
+            /** TEST */
+            //~ if (doc.id == 6562 ) {for (unsigned index: doc.wordIndices->indexVec) fprintf(stderr, "%s\n", GWDB.getWord(index)->txt);}
         }
 
         pthread_barrier_wait(&mBarrier);
@@ -215,8 +223,14 @@ void* Thread(void *param)
         if (mPhase == PH_FINISHED) break;
 
         /* PHASE 2 */
-        if (mPhase == PH_FINISHED) break;
+        if (myThreadId==0)
+        {
+            for (Document &D : mParsedDocs) {
+                for (unsigned index : D.wordIndices->indexVec)
+                    mTrie.insertWord(GWDB.getWord(index)->txt);
+            }
 
+        }
 
         /* LAST PHASE */
         if (myThreadId==0)

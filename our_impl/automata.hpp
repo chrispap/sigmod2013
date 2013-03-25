@@ -218,7 +218,8 @@ public:
      * Converts NFA 2 FDA
      * @param nfa The NFA automaton to convert
      */
-    DFALevenstein (const NFALevenstein &nfa) {
+    DFALevenstein (const char* str, int t) {
+        NFALevenstein nfa(str, t);
         int nfa_states_num = nfa.stateCount();
 
         vector<IndexHashTable> dfa_states;          // Here, I will keep track of the states to be processed
@@ -228,9 +229,6 @@ public:
         stack_pointer=0;
 
         nfa.loadStartState(dfa_states[0]);          // Load the start state of the NFA
-
-        printf(">> NFA has %d states \n", nfa_states_num);
-        printf(">> DFA Start State = NFA's "); nfa.printStates(dfa_states[0]);
 
         /* Here is done the whole thing... */
         IndexHashTable states_from_nfa (nfa_states_num);
@@ -260,7 +258,7 @@ public:
             stack_pointer++;
         }
 
-        printf(">> DFA has %d states \n", stateCount());
+        //~ fprintf(stderr, ">> Word: %-16s NFA: %3d DFA: %3d \n", str, nfa_states_num, stateCount());
     }
 
 };
@@ -293,13 +291,6 @@ public:
         return num_final_states;
     }
 
-    void match (const char* str, int t) const {
-        /* Construct the Levenstein DFA */
-        DFALevenstein L(NFALevenstein (str, t));
-
-        printf("DFA: %s/%d  =>  %d states \n", str, t, L.stateCount());
-
-    }
 
 };
 

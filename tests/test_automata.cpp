@@ -161,7 +161,7 @@ int main(int argc, char* argv[])
 
     /* Create the Levenstein Automaton for a word*/
     int v=GetClockTimeInMilliSec();
-    DFALevenstein dfa(NFALevenstein (W, t));
+    DFALevenstein dfa(W, t);
     printf(">> DFA Constructed in: ");PrintTime(v=GetClockTimeInMilliSec()-v);
 
     /* Make some tests */
