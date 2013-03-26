@@ -4,6 +4,7 @@
 #include <core.h>
 #include <cstdio>
 #include <cstdlib>
+#include <set>
 #include <pthread.h>
 
 #include "word.hpp"
@@ -24,8 +25,8 @@ struct Document
     DocID           id;
     char            *str;
     IndexHashTable  *words;
-    unsigned        numRes;
-    QueryID*        matchingQueryIDs;
+    set<QueryID>    *matchingQueries;
+
 
     //... unordered_map< ... >
     //~ unsigned        thread_limit;

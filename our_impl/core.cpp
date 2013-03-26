@@ -147,6 +147,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     newDoc.id = doc_id;
     newDoc.str = new_doc_str;
     newDoc.words = new IndexHashTable(HASH_SIZE);
+    newDoc.matchingQueries = new set<QueryID>();
 
     pthread_mutex_lock(&mPendingDocs_mutex);
     mPendingDocs.push(newDoc);
@@ -175,8 +176,21 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     Document res = mReadyDocs.front();
     mReadyDocs.pop();
     *p_doc_id = res.id;
-    *p_num_res = res.numRes;
-    *p_query_ids = res.matchingQueryIDs;
+    *p_num_res = res.matchingQueries->size();
+
+    if(*p_num_res) {
+        QueryID *mq = (QueryID*) malloc (*p_num_res * sizeof(QueryID));
+        auto qi = res.matchingQueries->begin();
+        for(unsigned i=0; i!=*p_num_res ; i++) {
+            mq[i] = *qi++;
+        }
+        *p_query_ids = mq;
+    }
+    else *p_query_ids=NULL;
+
+    delete res.matchingQueries;
+    delete res.words;
+
     //~ fprintf(stderr, "Doc %-4u delivered \n", res.id);fflush(NULL);
     pthread_cond_broadcast(&mReadyDocs_cond);
     pthread_mutex_unlock(&mReadyDocs_mutex);
@@ -237,9 +251,8 @@ void* Thread(void *param)
             pthread_mutex_lock(&mReadyDocs_mutex);
             for (Document &D : mParsedDocs)
             {
-                delete D.words;
-                D.numRes=0;
                 mReadyDocs.push(D);
+
             }
 
             pthread_cond_broadcast(&mReadyDocs_cond);
@@ -258,6 +271,9 @@ void* Thread(void *param)
 
 void ParseDoc(Document &doc, const long thread_id)
 {
+    unordered_map<QueryID, char> query_stats;
+    query_stats.reserve(mActiveQueries.size());
+
     const char *c1, *c2 = doc.str;
     Word* nw; unsigned nw_index;
 
@@ -265,7 +281,18 @@ void ParseDoc(Document &doc, const long thread_id)
     for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
         GWDB.insert(c1, c2, &nw_index, &nw);                    // We acquire the unique index for that word
-        doc.words->insert(nw_index);                            // We store the word to the documents set of word indices
+
+        if (doc.words->insert(nw_index)) {                      // We store the word to the documents set of word indices
+            for (QueryID qid : nw->querySet[MT_EXACT_MATCH]) {
+                query_stats[qid]++;
+            }
+        }
+    }
+
+    for (auto qc : query_stats) {
+        if (qc.second == mActiveQueries[qc.first].numWords) {
+            doc.matchingQueries->insert(qc.first);
+        }
     }
 
 }
