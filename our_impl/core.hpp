@@ -23,10 +23,12 @@ struct Document
 {
     DocID           id;
     char            *str;
-    IndexHashTable  *wordIndices;
     unsigned        numRes;
     QueryID*        matchingQueryIDs;
-    unsigned        thread_limit;
+    IndexHashTable  *words;
+    //... unordered_map< ... >
+
+    //~ unsigned        thread_limit;
 };
 
 

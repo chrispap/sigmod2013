@@ -149,7 +149,7 @@ void TestSigmod(const char* test_file_str)
                 }
 
                 /*CHRIS*/
-                int SC=0;   /// ShortCircuit the check
+                int SC=1;   /// ShortCircuit the check
                 int IGNR=1; /// Ignore incorrect results
                 /* */
                 if(flag_error && !SC)
