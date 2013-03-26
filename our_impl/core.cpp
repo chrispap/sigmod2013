@@ -17,9 +17,9 @@
 #include "automata.hpp"
 
 #define HASH_SIZE    (1<<18)
-#define NUM_THREADS  1
+#define NUM_THREADS  7
 
-enum PHASE { PH_01, PH_02, PH_FINISHED };
+enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
 using namespace std;
 
@@ -35,6 +35,7 @@ static vector<Document>     mParsedDocs;                    ///< Documents that 
 static queue<Document>      mReadyDocs;                     ///< Documents that have been completely processed and are ready for delivery.
 static IndexHashTable       mBatchWords(HASH_SIZE,true);    ///< Words that have been already encountered in the current batch.
 static DFATrie              mTrie;
+static int                  mBatchId;
 
 /* Queries */
 static map<QueryID,Query>   mActiveQueries;                 ///< Active Query IDs.
@@ -50,8 +51,6 @@ static pthread_mutex_t      mReadyDocs_mutex;               ///< Protect the acc
 static pthread_cond_t       mReadyDocs_cond;                ///<
 static pthread_barrier_t    mBarrier;
 
-static int                  mBatchId;
-
 /* Library Functions */
 ErrorCode InitializeIndex()
 {
@@ -66,7 +65,7 @@ ErrorCode InitializeIndex()
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-    mPhase = PH_01;
+    mPhase = PH_IDLE;
     mBatchId=0;
 
     for (long t=0; t< NUM_THREADS; t++) {
@@ -152,6 +151,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     pthread_mutex_lock(&mPendingDocs_mutex);
     mPendingDocs.push(newDoc);
     mPhase = PH_01;
+    //~ fprintf(stderr, "Doc %-4u pushed \n", doc_id);fflush(NULL);
     pthread_cond_broadcast(&mPendingDocs_cond);
     pthread_mutex_unlock(&mPendingDocs_mutex);
     return EC_SUCCESS;
@@ -160,8 +160,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
 ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_query_ids)
 {
     pthread_mutex_lock(&mPendingDocs_mutex);
-    //~ if (mPhase==PH_01)
-        mPhase = PH_02;
+    if (mPhase==PH_01) mPhase = PH_02;
     pthread_cond_broadcast(&mPendingDocs_cond);
     pthread_mutex_unlock(&mPendingDocs_mutex);
 
@@ -178,6 +177,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     *p_doc_id = res.id;
     *p_num_res = res.numRes;
     *p_query_ids = res.matchingQueryIDs;
+    //~ fprintf(stderr, "Doc %-4u delivered \n", res.id);fflush(NULL);
     pthread_cond_broadcast(&mReadyDocs_cond);
     pthread_mutex_unlock(&mReadyDocs_mutex);
     return EC_SUCCESS;
@@ -195,11 +195,10 @@ void* Thread(void *param)
         while (1)
         {
             pthread_mutex_lock(&mPendingDocs_mutex);
-            while (mPendingDocs.empty() && mPhase==PH_01 && mPhase!=PH_FINISHED)
+            while (mPendingDocs.empty() && mPhase<PH_02 )
                 pthread_cond_wait(&mPendingDocs_cond, &mPendingDocs_mutex);
 
-            if (mPendingDocs.empty() || mPhase==PH_FINISHED )
-            {
+            if (mPendingDocs.empty() || mPhase==PH_FINISHED) {
                 pthread_cond_broadcast(&mPendingDocs_cond);
                 pthread_mutex_unlock(&mPendingDocs_mutex);
                 break;
@@ -215,53 +214,44 @@ void* Thread(void *param)
             ParseDoc(doc, myThreadId);
             free(doc.str);
             pthread_mutex_lock(&mParsedDocs_mutex);
-            //~ doc.thread_limit = ceil( (double) doc.words->indexVec.size()/NUM_THREADS);
             mParsedDocs.push_back(doc);
             pthread_mutex_unlock(&mParsedDocs_mutex);
         }
 
-        if (mParsedDocs.size())
+        /* FINISH DETECTED */
+        if (mPhase == PH_FINISHED) break;
+
+        pthread_barrier_wait(&mBarrier);
+
+        /* LAST PHASE */
+        if (myThreadId==0)
         {
-            printf("%d ", mParsedDocs.size());
+            //~ fprintf(stderr, ">> BATCH %-4d  batch Docs = %u  activeQueries = %-4u \n", mBatchId, mParsedDocs.size(), mActiveQueries.size());fflush(NULL);
+            mBatchId++;
 
-            /* FINISH DETECTED */
-            if (mPhase == PH_FINISHED) break;
+            pthread_mutex_lock(&mPendingDocs_mutex);
+            if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
+            pthread_cond_broadcast(&mPendingDocs_cond);
+            pthread_mutex_unlock(&mPendingDocs_mutex);
 
-
-            /* PHASE 02
-             *...
-             *...
-             *...
-             *...
-             *...
-             *
-             */
-
-            /* LAST PHASE */
-            if (myThreadId==0)
+            pthread_mutex_lock(&mReadyDocs_mutex);
+            for (Document &D : mParsedDocs)
             {
-                fprintf(stderr, ">> BATCH %-4d activeQueries = %-4u \n", mBatchId, mActiveQueries.size());
-                mBatchId++;
-
-                pthread_mutex_lock(&mReadyDocs_mutex);
-                for (Document &D : mParsedDocs)
-                {
-                    delete D.words;
-                    mReadyDocs.push(D);
-                }
-
-                pthread_cond_broadcast(&mReadyDocs_cond);
-                pthread_mutex_unlock(&mReadyDocs_mutex);
-                mBatchWords.clear();
-                mParsedDocs.clear();
+                delete D.words;
+                D.numRes=0;
+                mReadyDocs.push(D);
             }
 
+            pthread_cond_broadcast(&mReadyDocs_cond);
+            pthread_mutex_unlock(&mReadyDocs_mutex);
+            mBatchWords.clear();
+            mParsedDocs.clear();
         }
 
-
+        pthread_barrier_wait(&mBarrier);
     }
 
-    //~ pthread_barrier_wait(&mBarrier);
+
     fprintf(stdout, "THREAD#%2ld EXITS \n", myThreadId); fflush(stdout);
     return NULL;
 }
@@ -275,7 +265,7 @@ void ParseDoc(Document &doc, const long thread_id)
     for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
         GWDB.insert(c1, c2, &nw_index, &nw);                    // We acquire the unique index for that word
-        doc.words->insert(nw_index);                      // We store the word to the documents set of word indices
+        doc.words->insert(nw_index);                            // We store the word to the documents set of word indices
     }
 
 }
