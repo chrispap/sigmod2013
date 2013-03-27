@@ -75,7 +75,19 @@ public:
         }
     }
 
-    unsigned size() const { return mSize;}
+    bool exists (int index) {
+        unsigned unit_offs = index / BITS_PER_UNIT;
+        unsigned unit_bit  = index % BITS_PER_UNIT;
+        unit mask = 1 << unit_bit;
+        if (units[unit_offs] & mask)
+            return true;
+        else
+            return false;
+    }
+
+    unsigned size() const {
+        return mSize;
+    }
 
     void clear () {
         for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;

@@ -14,9 +14,7 @@ struct Document
     DocID           id;
     char            *str;
     IndexHashTable  *words;
-    DFATrie         *trie;
     set<QueryID>    *matchingQueries;
-
 };
 
 

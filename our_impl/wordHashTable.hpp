@@ -75,16 +75,13 @@ public:
 
 
     bool exists (const char *c1, const char *c2, unsigned* inserted_word_index, Word** inserted_word) {
-        //~ lock();
         unsigned index = hash(c1, c2);
         while (table[index] && !table[index]->equals(c1, c2)) index = (index+1) % capacity;
         if (!table[index]) {
-            //~ unlock();
             return false;
         }
         *inserted_word_index = index;
         *inserted_word = table[index];
-        //~ unlock();
         return true;
     }
 
