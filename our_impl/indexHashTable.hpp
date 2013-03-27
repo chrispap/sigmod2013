@@ -1,9 +1,6 @@
 #ifndef INDEX_HASH_TABLE_H
 #define INDEX_HASH_TABLE_H
 
-#include <vector>
-#include <pthread.h>
-
 #define BITS_PER_UNIT (sizeof(unit)*8)
 
 using namespace std;

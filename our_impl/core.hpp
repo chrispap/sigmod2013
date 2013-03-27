@@ -1,17 +1,6 @@
 #ifndef CORE_H
 #define CORE_H
 
-#include <core.h>
-#include <cstdio>
-#include <cstdlib>
-#include <set>
-#include <pthread.h>
-
-#include "word.hpp"
-#include "indexHashTable.hpp"
-
-using namespace std;
-
 struct Query
 {
     MatchType       type;
@@ -25,11 +14,9 @@ struct Document
     DocID           id;
     char            *str;
     IndexHashTable  *words;
+    DFATrie         *trie;
     set<QueryID>    *matchingQueries;
 
-
-    //... unordered_map< ... >
-    //~ unsigned        thread_limit;
 };
 
 

@@ -1,19 +1,7 @@
 #ifndef AUTOMATA_H
 #define AUTOMATA_H
 
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
-#include <vector>
-#include <set>
-
-#include <csignal>
-
-#include "indexHashTable.hpp"
-
 #define NO_TRANS -1
-
-using namespace std;
 
 typedef int StateIndex;
 
@@ -77,6 +65,12 @@ protected:
     StateIndex trans_star[2];       /// Support max 2 star transitions
     StateIndex trans_epsilon;       /// Support max 1 epsilon transition
     void* word;
+};
+
+struct StatePair
+{
+    StateIndex s1;  // state index of the first dfa
+    StateIndex s2;  // state idex of the second dfa
 };
 
 class NFA
@@ -153,13 +147,13 @@ public:
         else return NO_TRANS;
     }
 
-protected:
-    vector<State> states;
-    unsigned num_final_states;
-
     State& operator[](const int index){
         return states[index];
     }
+
+protected:
+    vector<State> states;
+    unsigned num_final_states;
 
 };
 
@@ -223,22 +217,22 @@ public:
         int nfa_states_num = nfa.stateCount();
 
         vector<IndexHashTable> dfa_states;          // Here, I will keep track of the states to be processed
-        unsigned stack_pointer;                     // Points to the state we processed so far
+        unsigned sp;                     // Points to the state we processed so far
 
         dfa_states.emplace_back(nfa_states_num);    // The starting state does not need to be created because it has already been taken care by parent constructor!
-        stack_pointer=0;
+        sp=0;
 
         nfa.loadStartState(dfa_states[0]);          // Load the start state of the NFA
 
         /* Here is done the whole thing... */
         IndexHashTable states_from_nfa (nfa_states_num);
-        while (stack_pointer < dfa_states.size())
+        while (sp < dfa_states.size())
         {
             /* Expand a dfa_state (combination of NFA States) */
             for (char t='a' ; t<='z'; t++)
             {
                 states_from_nfa.clear();
-                nfa.expand(dfa_states[stack_pointer], states_from_nfa, t); //continue;
+                nfa.expand(dfa_states[sp], states_from_nfa, t); //continue;
 
                 /* Check the new set with all the existing sets (DFA States) */
                 StateIndex index;
@@ -252,10 +246,10 @@ public:
                     dfa_states.push_back(states_from_nfa);
                 }
 
-                states[stack_pointer].setLetterTransition(t, index);
+                states[sp].setLetterTransition(t, index);
             }
 
-            stack_pointer++;
+            sp++;
         }
 
         //~ fprintf(stderr, ">> Word: %-16s NFA: %3d DFA: %3d \n", str, nfa_states_num, stateCount());
@@ -263,20 +257,22 @@ public:
 
 };
 
+#include "word.hpp"
+
 class DFATrie : public NFA
 {
 public:
-    bool insertWord (const char* str) {
+    bool insertWord (const Word* word) {
         StateIndex cur=0;
-        for (int i=0 ; str[i] ; i++) {
-            if (states[cur][str[i]] == NO_TRANS) {
-                states[cur].setLetterTransition(str[i], states.size());
+        for (int i=0 ; word->txt[i] ; i++) {
+            if (states[cur][word->txt[i]] == NO_TRANS) {
+                states[cur].setLetterTransition(word->txt[i], states.size());
                 states.emplace_back();
             }
-            cur = states[cur][str[i]];
+            cur = states[cur][word->txt[i]];
         }
         if (states[cur].getWord()==NULL) {
-            states[cur].setWord((void*) 0x01); //TODO: Here I should store pointer to the word structure !!!
+            states[cur].setWord( (void*) word);
             num_final_states++;
             return true;
         }
@@ -291,6 +287,45 @@ public:
         return num_final_states;
     }
 
+    void dfaIntersect (DFALevenstein &dfa2, vector<Word*> &matches) {
+        DFATrie &dfa1 = *this;
+
+        unsigned sp = 0;    // StackPointer
+        vector<StatePair> stack;
+        stack.emplace_back();
+        stack[0].s1 = 0;
+        stack[0].s2 = 0;
+
+        struct StatePair ns;
+
+        while (sp < stack.size())
+        {
+            bool flag = false;
+
+            /* Expand a dfa_state (combination of NFA States) */
+            for (char t='a' ; t<='z'; t++)
+            {
+                StateIndex t1 = dfa1[stack[sp].s1][t];
+                StateIndex t2 = dfa2[stack[sp].s2][t];
+
+                if( t1 != NO_TRANS && t2 != NO_TRANS) // if a next state for this transition exists on both dfas
+                {
+                    ns.s1 = t1;
+                    ns.s2 = t2;
+                    stack.push_back(ns);
+
+                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal()) {
+                        matches.push_back( (Word*) states[t1].getWord()); // Push the match.
+                    }
+
+                    flag = true;
+                }
+            }
+
+            if (flag) sp++;
+        }
+
+    }
 
 };
 

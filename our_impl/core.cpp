@@ -1,6 +1,5 @@
-#include <core.h>
-#include "core.hpp"
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <pthread.h>
 #include <queue>
@@ -9,12 +8,13 @@
 #include <cmath>
 #include <unordered_map>
 #include <utility>
+#include <core.h>
 
-#include "core.hpp"
-#include "word.hpp"
-#include "wordHashTable.hpp"
 #include "indexHashTable.hpp"
 #include "automata.hpp"
+#include "word.hpp"
+#include "core.hpp"
+#include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<11)
 #define NUM_THREADS  7
@@ -147,6 +147,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     newDoc.id = doc_id;
     newDoc.str = new_doc_str;
     newDoc.words = new IndexHashTable(HASH_SIZE);
+    newDoc.trie = new DFATrie();
     newDoc.matchingQueries = new set<QueryID>();
 
     pthread_mutex_lock(&mPendingDocs_mutex);
@@ -190,6 +191,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 
     delete res.matchingQueries;
     delete res.words;
+    delete res.trie;
 
     //~ fprintf(stderr, "Doc %-4u delivered \n", res.id);fflush(NULL);
     pthread_cond_broadcast(&mReadyDocs_cond);
@@ -280,12 +282,12 @@ void ParseDoc(Document &doc, const long thread_id)
     while(*c2==' ') ++c2;                                       // Skip any spaces
     for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
-		if(GWDB.exists(c1, c2, &nw_index, &nw) && doc.words->insert(nw_index)) { // We store the word to the documents set of word indices
-			for (QueryID qid : nw->querySet[MT_EXACT_MATCH]) {
-				query_stats[qid]++;
-			}
-		}
-	}
+        if(GWDB.exists(c1, c2, &nw_index, &nw) && doc.words->insert(nw_index)) { // We store the word to the documents set of word indices
+            for (QueryID qid : nw->querySet[MT_EXACT_MATCH]) {
+                query_stats[qid]++;
+            }
+        }
+    }
 
     for (auto qc : query_stats) {
         if (qc.second == mActiveQueries[qc.first].numWords) {

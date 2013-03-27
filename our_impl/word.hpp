@@ -1,12 +1,6 @@
 #ifndef WORD_H
 #define WORD_H
 
-#include <core.h>
-#include <set>
-#include "automata.hpp"
-
-using namespace std;
-
 struct Word
 {
     char            txt[MAX_WORD_LENGTH+1];         ///< The actual word :P
