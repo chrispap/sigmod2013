@@ -16,7 +16,7 @@
 #include "indexHashTable.hpp"
 #include "automata.hpp"
 
-#define HASH_SIZE    (1<<18)
+#define HASH_SIZE    (1<<11)
 #define NUM_THREADS  7
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
@@ -280,14 +280,12 @@ void ParseDoc(Document &doc, const long thread_id)
     while(*c2==' ') ++c2;                                       // Skip any spaces
     for (c1=c2;*c2;c1=c2+1) {                                   // For each document word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
-        GWDB.insert(c1, c2, &nw_index, &nw);                    // We acquire the unique index for that word
-
-        if (doc.words->insert(nw_index)) {                      // We store the word to the documents set of word indices
-            for (QueryID qid : nw->querySet[MT_EXACT_MATCH]) {
-                query_stats[qid]++;
-            }
-        }
-    }
+		if(GWDB.exists(c1, c2, &nw_index, &nw) && doc.words->insert(nw_index)) { // We store the word to the documents set of word indices
+			for (QueryID qid : nw->querySet[MT_EXACT_MATCH]) {
+				query_stats[qid]++;
+			}
+		}
+	}
 
     for (auto qc : query_stats) {
         if (qc.second == mActiveQueries[qc.first].numWords) {
