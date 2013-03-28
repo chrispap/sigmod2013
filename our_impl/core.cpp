@@ -16,7 +16,7 @@
 #include "core.hpp"
 #include "wordHashTable.hpp"
 
-#define HASH_SIZE    (1<<18)
+#define HASH_SIZE    (1<<20)
 #define NUM_THREADS  8
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
@@ -243,22 +243,16 @@ void* Thread(void *param)
         pthread_barrier_wait(&mBarrier);
 
         /* MATCHING PHASE */
-        unsigned threadRange, index;
 
-        /* 1) New Query Words => Trie */
-        threadRange = (unsigned) ceil( ((double) (mQW[MT_EDIT_DIST].indexVec.size() - mQWLastEdit)) / NUM_THREADS);
-        for (unsigned i = 0; i < threadRange; i++) {
-            index = threadRange*myThreadId + mQWLastEdit + i;
-            vector<Word*> matchList;
-            if(index >= mQW[MT_EDIT_DIST].indexVec.size()) break;
+        // 1. New Query Words => Trie */
+        for (unsigned index = myThreadId+mQWLastEdit ; index < mQW[MT_EDIT_DIST].indexVec.size() ; index += NUM_THREADS) {
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
-            if (w->dfa == NULL) w->dfa = new DFALevenstein(w->txt ,3);
-            mDTrie.dfaIntersect(*w->dfa, matchList);
-            //~ fprintf(stdout, " # %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTrie.wordCount(), myThreadId);fflush(NULL);
+            mDTrie.dfaIntersect(w);
+            //~ fprintf(stdout, " + %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTrie.wordCount(), myThreadId);fflush(NULL);
         }
         pthread_barrier_wait(&mBarrier);
 
-        /* 2) Append New Doc Words to the normal Trie and to a new one */
+        // 2. Append New Doc Words to the normal Trie and to a new one */
         if (myThreadId==0)
         {
             mQWLastEdit = mQW[MT_EDIT_DIST].size();
@@ -275,36 +269,31 @@ void* Thread(void *param)
         }
         pthread_barrier_wait(&mBarrier);
 
-        /* 3) All QWords => Temp Trie*/
-        threadRange = (unsigned) ceil( ((double) (mQW[MT_EDIT_DIST].indexVec.size())) / NUM_THREADS);
-        for (unsigned i = 0; i < threadRange; i++) {
-            index = threadRange*myThreadId + i;
-            vector<Word*> matchList;
-            if(index >= mQW[MT_EDIT_DIST].indexVec.size()) break;
+        // 3. All QWords => Temp Trie*/
+        for (unsigned index=myThreadId ; index < mQW[MT_EDIT_DIST].indexVec.size() ; index += NUM_THREADS) {
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
-            if (w->dfa == NULL) w->dfa = new DFALevenstein(w->txt ,3);
-            mDTempTrie.dfaIntersect(*w->dfa, matchList);
-            //~ fprintf(stdout, " $ %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
+            mDTempTrie.dfaIntersect(w);
+            //~ fprintf(stdout, " - %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
         }
-        //~ pthread_barrier_wait(&mBarrier);
+        pthread_barrier_wait(&mBarrier);
 
         /* LAST PHASE */
         if (myThreadId==0)
-        {/*
-            fprintf(stdout, ">> BATCH %-3d:  "
-                "batch Docs = %u  |  "
-                "activeQueries = %-4u  |  "
-                "mQW(edit) = %-4u  |  "
-                "newDocWords = %-4u  |  "
-                "mDWords = %-5u  |  "
-                "\n",
-            mBatchId,
-            mParsedDocs.size(),
-            mActiveQueries.size(),
-            mQW[2].size(),
-            mDTempTrie.wordCount(),
-            mDWords.size());
-            fflush(NULL);*/
+        {
+            //~ fprintf(stdout, ">> BATCH %-3d:  "
+                //~ "batch Docs = %u  |  "
+                //~ "activeQueries = %-4u  |  "
+                //~ "mQW(edit) = %-4u  |  "
+                //~ "newDocWords = %-4u  |  "
+                //~ "mDWords = %-5u  |  "
+                //~ "\n",
+            //~ mBatchId,
+            //~ mParsedDocs.size(),
+            //~ mActiveQueries.size(),
+            //~ mQW[2].size(),
+            //~ mDTempTrie.wordCount(),
+            //~ mDWords.size());
+            //~ fflush(NULL);
 
             pthread_mutex_lock(&mPendingDocs_mutex);
             if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
@@ -345,6 +334,7 @@ void ParseDoc(Document &doc, const long thread_id)
         bool F3 = doc.words->insert(nw_index);
 
         if (F3) mBatchWords.insert(nw_index);
+
         if (!F1 &&  F2 &&  F3)
             for (QueryID qid : nw->querySet[MT_EXACT_MATCH])
                 query_stats[qid]++;

@@ -130,7 +130,7 @@ public:
     bool isFinalState (IndexHashTable &state_set) const {
         for (StateIndex i : state_set.indexVec)
             if (states[i].isFinal()) return true;
-            return false;
+        return false;
     }
 
     void printStates (IndexHashTable &states) const {
@@ -195,12 +195,22 @@ public:
         for (int err=0 ; err<t ; err++) {
             i = err*(len+1)+cons;
             states[i].setStarTransitions(i+len+1);
-            states[i].setWord((void*) 0x01);        /// Important! This is a final state.
+            states[i].setWord((void*) (err+1));        /// In the final state pointer store the information about the matching distance. Add +1 so that distance `0` will not be false
             num_final_states++;
         }
 
         i = (len+1)*(t+1)-1;
         states[i].setWord((void*) 0x01);            /// Important! This is the case for matching with distance == threshold final state.
+    }
+
+    int minDistance (IndexHashTable &state_set) {
+        int dist, min=0x7FFFFFFF;
+        for (StateIndex i : state_set.indexVec) {
+            dist = (int) states[i].getWord();
+            if (dist && dist<min) min = dist;
+        }
+        if (min<0x7FFFFFFF) return min;
+        else return 0;
     }
 
 };
@@ -217,7 +227,7 @@ public:
         int nfa_states_num = nfa.stateCount();
 
         vector<IndexHashTable> dfa_states;          // Here, I will keep track of the states to be processed
-        unsigned sp;                     // Points to the state we processed so far
+        unsigned sp;                                // Points to the state we processed so far
 
         dfa_states.emplace_back(nfa_states_num);    // The starting state does not need to be created because it has already been taken care by parent constructor!
         sp=0;
@@ -241,8 +251,7 @@ public:
 
                 if (index==(StateIndex)dfa_states.size()) {     // Here we have a new state for the DFA
                     states.emplace_back();
-                    if (nfa.isFinalState(states_from_nfa))
-                        states.back().setWord((void*)0x01);
+                    states.back().setWord( (void*) nfa.minDistance(states_from_nfa));
                     dfa_states.push_back(states_from_nfa);
                 }
 
@@ -293,8 +302,9 @@ public:
         num_final_states=0;
     }
 
-    void dfaIntersect (DFALevenstein &dfa2, vector<Word*> &matches) {
+    void dfaIntersect (Word *word) {
         DFATrie &dfa1 = *this;
+        DFALevenstein &dfa2 = word->dfa != NULL ? *word->dfa : *(word->dfa=new DFALevenstein(word->txt, 3));
 
         unsigned sp = 0;    // StackPointer
         vector<StatePair> stack;
@@ -315,12 +325,12 @@ public:
                     ns.s1 = t1;
                     ns.s2 = t2;
                     stack.push_back(ns);
-                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal())
-                        matches.push_back( (Word*) states[t1].getWord());
+                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal()) {
+
+
+                    }
                 }
-
             }
-
             sp++;
         }
 
