@@ -17,7 +17,7 @@
 #include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<18)
-#define NUM_THREADS  7
+#define NUM_THREADS  8
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -30,13 +30,16 @@ static void  ParseDoc (Document &doc, const long thread_id);
 
 /* Globals */
 static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to  EVERY  single word encountered.
-static DFATrie              mDTrie;                         ///< A Trie containing  ALL the words of  ALL  Documents  EVER.
-static IndexHashTable       mDWords(HASH_SIZE,0);           ///< Unique indices of words of ALL Documents
+static IndexHashTable       mDWords(HASH_SIZE,0);           ///< Unique indices of words of ALL PAST Documents
+static IndexHashTable       mBatchWords(HASH_SIZE,1);
 static IndexHashTable       mQWords[3] = {
-                              IndexHashTable(HASH_SIZE, 0), ///< Unique indices of words of EXACT_MATCH Queries
-                              IndexHashTable(HASH_SIZE, 1), ///< Unique indices of words of HAMM_MATCH Queries
-                              IndexHashTable(HASH_SIZE, 1)  ///< Unique indices of words of EDIT_MATCH Queries
-                            };
+                             IndexHashTable(HASH_SIZE, 0),  ///< Unique indices of words of EXACT_MATCH Queries
+                             IndexHashTable(HASH_SIZE, 1),  ///< Unique indices of words of HAMM_MATCH Queries
+                             IndexHashTable(HASH_SIZE, 1)}; ///< Unique indices of words of EDIT_MATCH Queries
+static unsigned             mQWLastHamm;                    ///<
+static unsigned             mQWLastEdit;                    ///<
+static DFATrie              mDTrie;                         ///< A Trie containing the words of  ALL  Documents  EVER.
+static DFATrie              mDTempTrie;                     ///< A Trie containing the words that appeared for first time in this Batch
 
 /* Documents */
 static queue<Document>      mPendingDocs;                   ///< Documents that haven't yet been touched at all.
@@ -44,10 +47,8 @@ static vector<Document>     mParsedDocs;                    ///< Documents that 
 static queue<Document>      mReadyDocs;                     ///< Documents that have been completely processed and are ready for delivery.
 static int                  mBatchId;
 
-
 /* Queries */
 static map<QueryID,Query>   mActiveQueries;                 ///< Active Query IDs.
-
 
 /* Threading */
 static volatile PHASE       mPhase;                         ///< Indicates in which phase the threads should be.
@@ -98,7 +99,7 @@ ErrorCode DestroyIndex()
 
     fprintf(stdout, "\n=== WORDS ==========================================\n");
     fprintf(stdout, "GWDB    Exact   Hamming   Edit   docWords   \n");
-    fprintf(stdout, "%-5u   %-5u   %-7u   %-4u   %-8u   \n", GWDB.size(), mQWords[0].size(), mQWords[1].size(), mQWords[2].size(), mDTrie.wordCount());
+    fprintf(stdout, "%-5u   %-5u   %-7u   %-4u   %-8u   \n", GWDB.size(), mQWords[0].size(), mQWords[1].size(), mQWords[2].size(), mDWords.size());
     fprintf(stdout, "====================================================\n");
 
     return EC_SUCCESS;
@@ -115,7 +116,6 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
     while(*c2==' ') ++c2;                                       // Skip any spaces
     for (c1=c2;*c2;c1=c2+1) {                                   // For each query word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
-
         GWDB.insert(c1, c2, &nw_index, &nw);                    // Store the word in the GWDB
         nw->querySet[match_type].insert(query_id);              // Update the appropriate query set based on the match_type
         new_query.words[num_words] = nw;                        // Add the word to the query
@@ -206,7 +206,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 void* Thread(void *param)
 {
     long myThreadId = (long) param;
-    //~ fprintf(stdout, ">> THREAD#%2ld STARTS \n", myThreadId); fflush(stdout);
+    fprintf(stdout, ">> THREAD#%2ld STARTS \n", myThreadId); fflush(stdout);
 
     while (1)
     {
@@ -242,47 +242,73 @@ void* Thread(void *param)
 
         pthread_barrier_wait(&mBarrier);
 
-        /* MIDDLE PHASE */
+        /* MATCHING PHASE */
+        unsigned threadRange, index;
+
+        /* 1) New QWords => Old Doc Words */
+        threadRange = (unsigned) ceil( ((double) (mQWords[MT_EDIT_DIST].indexVec.size() - mQWLastEdit)) / NUM_THREADS);
+        for (unsigned i = 0; i < threadRange; i++) {
+            index = threadRange*myThreadId + mQWLastEdit + i;
+            vector<Word*> matchList;
+            if(index >= mQWords[MT_EDIT_DIST].indexVec.size()) break;
+            Word *w = GWDB.getWord(mQWords[MT_EDIT_DIST].indexVec[index]);
+            if (w->dfa == NULL) w->dfa = new DFALevenstein(w->txt ,3);
+            mDTrie.dfaIntersect(*w->dfa, matchList);
+        }
+        pthread_barrier_wait(&mBarrier);
+
+        /* 2) Append New Doc Words to the old Trie and to a new one */
         if (myThreadId==0)
         {
-            for (Document &D : mParsedDocs) {
-                for (unsigned index : D.words->indexVec) {
-                    if (mDWords.insert(index)) {
-                        mDTrie.insertWord(GWDB.getWord(index));
-                    }
+            for (unsigned index : mBatchWords.indexVec) {
+                if (mDWords.insert(index)) {
+                    Word* w = GWDB.getWord(index);
+                    mDTrie.insertWord(w);
+                    mDTempTrie.insertWord(w);
                 }
             }
 
         }
+        pthread_barrier_wait(&mBarrier);
 
+        /* 3) All QWords => New Trie*/
+        threadRange = (unsigned) ceil( ((double) (mQWords[MT_EDIT_DIST].indexVec.size())) / NUM_THREADS);
+        for (unsigned i = 0; i < threadRange; i++) {
+            index = threadRange*myThreadId + i;
+            vector<Word*> matchList;
+            if(index >= mQWords[MT_EDIT_DIST].indexVec.size()) break;
+            Word *w = GWDB.getWord(mQWords[MT_EDIT_DIST].indexVec[index]);
+            if (w->dfa == NULL) w->dfa = new DFALevenstein(w->txt ,3);
+            mDTempTrie.dfaIntersect(*w->dfa, matchList);
+        }
         pthread_barrier_wait(&mBarrier);
 
         /* LAST PHASE */
         if (myThreadId==0)
         {
-            //~ fprintf(stderr, ">> BATCH %-4d  batch Docs = %u   activeQueries = %-4u  docWords = %u \n", mBatchId, mParsedDocs.size(), mActiveQueries.size(), mDWords.size());fflush(NULL);
-            mBatchId++;
+            //~ fprintf(stderr, ">> BATCH %-3d:  batch Docs = %u  |  activeQueries = %-4u  |  mQWords(edit) = %-4u  |  mDWords = %-5u  |  \n", mBatchId, mParsedDocs.size(), mActiveQueries.size(), mQWords[2].size(), mDWords.size()); fflush(NULL);
 
             pthread_mutex_lock(&mPendingDocs_mutex);
             if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
             pthread_cond_broadcast(&mPendingDocs_cond);
             pthread_mutex_unlock(&mPendingDocs_mutex);
-
             pthread_mutex_lock(&mReadyDocs_mutex);
-            for (Document &D : mParsedDocs) {
-                //~ fprintf(stderr,/*"Doc %-3u: Trie contains %-4u words \n"*/ "%d-" /*,D.id*/, D.words->size() );
-                mReadyDocs.push(D);
-            }
+            for (Document &D : mParsedDocs) mReadyDocs.push(D);
             pthread_cond_broadcast(&mReadyDocs_cond);
             pthread_mutex_unlock(&mReadyDocs_mutex);
+
+            mQWLastEdit = mQWords[MT_EDIT_DIST].size();
+            mQWLastHamm = mQWords[MT_HAMMING_DIST].size();
             mParsedDocs.clear();
+            mDTempTrie.clear();
+            mBatchWords.clear();
+            mBatchId++;
         }
 
         pthread_barrier_wait(&mBarrier);
     }
 
-
-    //~ fprintf(stdout, ">> THREAD#%2ld EXITS \n", myThreadId); fflush(stdout);
+    fprintf(stdout, ">> THREAD#%2ld EXITS \n", myThreadId); fflush(stdout);
     return NULL;
 }
 
@@ -293,7 +319,6 @@ void ParseDoc(Document &doc, const long thread_id)
 
     const char *c1, *c2 = doc.str;
     Word* nw; unsigned nw_index;
-
     while(*c2==' ') ++c2;
     for (c1=c2;*c2;c1=c2+1) {
         do {++c2;} while (*c2!=' ' && *c2 );
@@ -301,6 +326,12 @@ void ParseDoc(Document &doc, const long thread_id)
         bool F1 = GWDB.insert(c1, c2, &nw_index, &nw);
         bool F2 = F1 ? false : mQWords[MT_EXACT_MATCH].exists(nw_index);
         bool F3 = doc.words->insert(nw_index);
+
+        if (F3) {
+            //~ pthread_mutex_lock(&mParsedDocs_mutex);
+            mBatchWords.insert(nw_index);
+            //~ pthread_mutex_unlock(&mParsedDocs_mutex);
+        }
 
         if (!F1 &&  F2 &&  F3) {
             for (QueryID qid : nw->querySet[MT_EXACT_MATCH])
@@ -316,3 +347,4 @@ void ParseDoc(Document &doc, const long thread_id)
     }
 
 }
+

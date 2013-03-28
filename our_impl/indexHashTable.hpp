@@ -58,19 +58,19 @@ public:
     }
 
     bool insert (int index) {
-        //~ lock();
+        lock();
         unsigned unit_offs = index / BITS_PER_UNIT;
         unsigned unit_bit  = index % BITS_PER_UNIT;
         unit mask = 1 << unit_bit;
         if (units[unit_offs] & mask) {
-            //~ unlock();
+            unlock();
             return false;
         }
         else {
             units[unit_offs] |= mask;
             mSize++;
             if (keepIndexVec) indexVec.push_back(index);
-            //~ unlock();
+            unlock();
             return true;
         }
     }

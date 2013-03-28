@@ -287,6 +287,12 @@ public:
         return num_final_states;
     }
 
+    void clear() {
+        states.clear();
+        states.emplace_back();
+        num_final_states=0;
+    }
+
     void dfaIntersect (DFALevenstein &dfa2, vector<Word*> &matches) {
         DFATrie &dfa1 = *this;
 
@@ -300,29 +306,22 @@ public:
 
         while (sp < stack.size())
         {
-            bool flag = false;
-
             /* Expand a dfa_state (combination of NFA States) */
             for (char t='a' ; t<='z'; t++)
             {
                 StateIndex t1 = dfa1[stack[sp].s1][t];
                 StateIndex t2 = dfa2[stack[sp].s2][t];
-
-                if( t1 != NO_TRANS && t2 != NO_TRANS) // if a next state for this transition exists on both dfas
-                {
+                if( t1 != NO_TRANS && t2 != NO_TRANS) {  // Same Transition in both DFAs !
                     ns.s1 = t1;
                     ns.s2 = t2;
                     stack.push_back(ns);
-
-                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal()) {
-                        matches.push_back( (Word*) states[t1].getWord()); // Push the match.
-                    }
-
-                    flag = true;
+                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal())
+                        matches.push_back( (Word*) states[t1].getWord());
                 }
+
             }
 
-            if (flag) sp++;
+            sp++;
         }
 
     }

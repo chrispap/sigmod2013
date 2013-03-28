@@ -1,12 +1,25 @@
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
+#include <pthread.h>
+#include <queue>
+#include <map>
+#include <set>
+#include <cmath>
+#include <unordered_map>
+#include <utility>
 #include <sys/time.h>
+#include <core.h>
 
-#include "../our_impl/automata.hpp"
+#include "indexHashTable.hpp"
+#include "automata.hpp"
+#include "word.hpp"
+#include "core.hpp"
+#include "wordHashTable.hpp"
 
 /**
  * Compile with:
- *      g++ -std=c++11 -Wall -O3 -g test_automata.cpp -o test_automata
+ *      g++ -std=c++11 -Wall -O3 -g -I../include/ -I ../our_impl/  test_automata.cpp -o test_automata
  */
 
 int GetClockTimeInMilliSec()
@@ -126,7 +139,7 @@ void menu (DFATrie &trie)
         case 1:
             printf("Enter the word you want to insert(up to 32 chars):\n");
             if (!scanf("%s",str)) break;
-            trie.insertWord(str);
+            //~ trie.insertWord(str);
             printf("The word is inserted properly.\n");
             break;
         case 2:
@@ -179,7 +192,7 @@ int main(int argc, char* argv[])
             match_count++;
         }
     } while (match_count<10000000);
-    printf("Did %d matches in ", match_count); PrintTime(v=GetClockTimeInMilliSec()-v);
+    printf("Did %4.2f million matches in ", match_count/1000000.0); PrintTime(v=GetClockTimeInMilliSec()-v);
 
 
     //~ menu(trie);
