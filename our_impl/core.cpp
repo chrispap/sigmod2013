@@ -17,7 +17,7 @@
 #include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<18)
-#define NUM_THREADS  1
+#define NUM_THREADS  8
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -254,13 +254,16 @@ void* Thread(void *param)
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
             if (w->dfa == NULL) w->dfa = new DFALevenstein(w->txt ,3);
             mDTrie.dfaIntersect(*w->dfa, matchList);
-            fprintf(stdout, " # %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTrie.wordCount(), myThreadId);fflush(NULL);
+            //~ fprintf(stdout, " # %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTrie.wordCount(), myThreadId);fflush(NULL);
         }
         pthread_barrier_wait(&mBarrier);
 
         /* 2) Append New Doc Words to the normal Trie and to a new one */
         if (myThreadId==0)
         {
+            mQWLastEdit = mQW[MT_EDIT_DIST].size();
+            mQWLastHamm = mQW[MT_HAMMING_DIST].size();
+
             for (unsigned index : mBatchWords.indexVec) {
                 if (mDWords.insert(index)) {
                     Word* w = GWDB.getWord(index);
@@ -281,13 +284,13 @@ void* Thread(void *param)
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
             if (w->dfa == NULL) w->dfa = new DFALevenstein(w->txt ,3);
             mDTempTrie.dfaIntersect(*w->dfa, matchList);
-            fprintf(stdout, " $ %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
+            //~ fprintf(stdout, " $ %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
         }
-        pthread_barrier_wait(&mBarrier);
+        //~ pthread_barrier_wait(&mBarrier);
 
         /* LAST PHASE */
         if (myThreadId==0)
-        {
+        {/*
             fprintf(stdout, ">> BATCH %-3d:  "
                 "batch Docs = %u  |  "
                 "activeQueries = %-4u  |  "
@@ -301,7 +304,7 @@ void* Thread(void *param)
             mQW[2].size(),
             mDTempTrie.wordCount(),
             mDWords.size());
-            fflush(NULL);
+            fflush(NULL);*/
 
             pthread_mutex_lock(&mPendingDocs_mutex);
             if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
@@ -312,8 +315,6 @@ void* Thread(void *param)
             pthread_cond_broadcast(&mReadyDocs_cond);
             pthread_mutex_unlock(&mReadyDocs_mutex);
 
-            mQWLastEdit = mQW[MT_EDIT_DIST].size();
-            mQWLastHamm = mQW[MT_HAMMING_DIST].size();
             mParsedDocs.clear();
             mDTempTrie.clear();
             mBatchWords.clear();
