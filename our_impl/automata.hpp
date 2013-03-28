@@ -165,7 +165,7 @@ public:
      * @param str   The word for which automaton will be constructed
      * @param t     Threshold
      */
-    NFALevenstein (const char* str, int t) {
+    NFALevenstein (const char* str, long t) {
         int len = strlen(str);
         StateIndex i;
         int err, cons;
@@ -192,7 +192,7 @@ public:
 
         /* Construct right-most column */
         cons = len;
-        for (int err=0 ; err<t ; err++) {
+        for (long err=0 ; err<t ; err++) {
             i = err*(len+1)+cons;
             states[i].setStarTransitions(i+len+1);
             states[i].setWord((void*) (err+1));        /// In the final state pointer store the information about the matching distance. Add +1 so that distance `0` will not be false
@@ -200,16 +200,16 @@ public:
         }
 
         i = (len+1)*(t+1)-1;
-        states[i].setWord((void*) 0x01);            /// Important! This is the case for matching with distance == threshold final state.
+        states[i].setWord((void*) (t+1));            /// Important! This is the case for matching with distance == threshold final state.
     }
 
-    int minDistance (IndexHashTable &state_set) {
-        int dist, min=0x7FFFFFFF;
+    long minDistance (IndexHashTable &state_set) {
+        long dist, min=10;
         for (StateIndex i : state_set.indexVec) {
-            dist = (int) states[i].getWord();
+            dist = (long) states[i].getWord();
             if (dist && dist<min) min = dist;
         }
-        if (min<0x7FFFFFFF) return min;
+        if (min<10) return min;
         else return 0;
     }
 
@@ -262,6 +262,10 @@ public:
         }
 
         //~ fprintf(stderr, ">> Word: %-16s NFA: %3d DFA: %3d \n", str, nfa_states_num, stateCount());
+    }
+
+    long distance (StateIndex index) {
+        return (((long)(states[index].getWord()))-1);
     }
 
 };
@@ -325,10 +329,8 @@ public:
                     ns.s1 = t1;
                     ns.s2 = t2;
                     stack.push_back(ns);
-                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal()) {
-
-
-                    }
+                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal())
+                        word->editMatches[dfa2.distance(t2)].insert((Word*)dfa1[t1].getWord());
                 }
             }
             sp++;

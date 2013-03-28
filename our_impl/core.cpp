@@ -16,7 +16,7 @@
 #include "core.hpp"
 #include "wordHashTable.hpp"
 
-#define HASH_SIZE    (1<<20)
+#define HASH_SIZE    (1<<18)
 #define NUM_THREADS  8
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
@@ -48,7 +48,7 @@ static queue<Document>      mReadyDocs;                     ///< Documents that 
 static int                  mBatchId;
 
 /* Queries */
-static map<QueryID,Query>   mActiveQueries;                 ///< Active Query IDs.
+static unordered_map<QueryID,Query>  mActiveQueries;        ///< Active Query IDs.
 
 /* Threading */
 static volatile PHASE       mPhase;                         ///< Indicates in which phase the threads should be.
@@ -77,6 +77,8 @@ ErrorCode InitializeIndex()
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     mPhase = PH_IDLE;
     mBatchId=0;
+
+    //~ mActiveQueries.reserve(10000);
 
     for (long t=0; t< NUM_THREADS; t++) {
         int rc = pthread_create(&mThreads[t], &attr, Thread, (void *)t);
@@ -244,7 +246,7 @@ void* Thread(void *param)
 
         /* MATCHING PHASE */
 
-        // 1. New Query Words => Trie */
+        // 1. New Query Words => Normal Trie */
         for (unsigned index = myThreadId+mQWLastEdit ; index < mQW[MT_EDIT_DIST].indexVec.size() ; index += NUM_THREADS) {
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
             mDTrie.dfaIntersect(w);
@@ -252,7 +254,7 @@ void* Thread(void *param)
         }
         pthread_barrier_wait(&mBarrier);
 
-        // 2. Append New Doc Words to the normal Trie and to a new one */
+        // 2. Append New Doc Words both to the Normal Trie and the Temp one */
         if (myThreadId==0)
         {
             mQWLastEdit = mQW[MT_EDIT_DIST].size();
@@ -275,7 +277,7 @@ void* Thread(void *param)
             mDTempTrie.dfaIntersect(w);
             //~ fprintf(stdout, " - %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
         }
-        pthread_barrier_wait(&mBarrier);
+        //~ pthread_barrier_wait(&mBarrier);
 
         /* LAST PHASE */
         if (myThreadId==0)
@@ -333,7 +335,11 @@ void ParseDoc(Document &doc, const long thread_id)
         bool F2 = F1 ? false : mQW[MT_EXACT_MATCH].exists(nw_index);
         bool F3 = doc.words->insert(nw_index);
 
-        if (F3) mBatchWords.insert(nw_index);
+        if (F3) {
+            pthread_mutex_lock(&mParsedDocs_mutex);
+            mBatchWords.insert(nw_index);
+            pthread_mutex_unlock(&mParsedDocs_mutex);
+        }
 
         if (!F1 &&  F2 &&  F3)
             for (QueryID qid : nw->querySet[MT_EXACT_MATCH])

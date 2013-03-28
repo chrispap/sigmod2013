@@ -5,14 +5,12 @@ struct Word
 {
     char            txt[MAX_WORD_LENGTH+1];         ///< The actual word :P
     set<QueryID>    querySet[3];                    ///< Sets of queries matching this word. One set for each MatchType
+    set<DocID>      docSet;
+    set<Word*>      editMatches[4];                 ///< Lists with words. One for each edit distance.
+    set<Word*>      hammMatches[4];                 ///< Lists with words. One for each hamming distance.
     int             length;                         ///< Strlen(txt);
     unsigned        letterBits;                     ///< 1 bit for every char [a-z]
     DFALevenstein   *dfa;
-
-    /* maria */
-    set<DocID>      docSet;
-    DocID           firstDoc;
-    QueryID         firstQuery;
 
     /** Store the new word and populate the data structures */
     Word (const char *c1, const char *c2) :
