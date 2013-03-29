@@ -17,7 +17,7 @@
 #include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<18)
-#define NUM_THREADS  8
+#define NUM_THREADS  10
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 

@@ -7,7 +7,7 @@ using namespace std;
 
 class IndexHashTable
 {
-    typedef unsigned unit;
+    typedef unsigned long unit;
 
     unit*               units;          //TODO: Maybe if it becomes stl::vector it will have better performance ?
     unsigned            numUnits;
