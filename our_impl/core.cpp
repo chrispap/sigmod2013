@@ -29,7 +29,7 @@ static void  ParseDoc (Document &doc, const long thread_id);
 
 /* Globals */
 static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to  EVERY  single word encountered.
-static IndexHashTable       mDWords(HASH_SIZE,0);           ///< Unique indices of words of ALL PAST Documents
+static IndexHashTable       mDWords(HASH_SIZE,1);           ///< Unique indices of words of ALL PAST Documents
 static IndexHashTable       mBatchWords(HASH_SIZE,1);
 static IndexHashTable       mQW[3] = {
                              IndexHashTable(HASH_SIZE, 0),  ///< Unique indices of words of EXACT_MATCH Queries
@@ -240,21 +240,25 @@ void* Thread(void *param)
 
         /* FINISH DETECTED */
         if (mPhase == PH_FINISHED) break;
+
         pthread_barrier_wait(&mBarrier);
 
         /* MATCHING PHASE */
-
-
-/* Calculate distances of:  {new qwords_edit} - {old dwords}  */
-        for (unsigned index = myThreadId+mQWLastEdit ; index < mQW[MT_EDIT_DIST].indexVec.size() ; index += NUM_THREADS) {
+        /** [01.]
+         *  Calculate EDIT Dist of:  { new_qwords_edit } ... { old_dwords }
+         */
+        for (unsigned index = myThreadId+mQWLastEdit ; index < mQW[MT_EDIT_DIST].size() ; index += NUM_THREADS) {
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
             mDTrie.dfaIntersect(w);
             //~ fprintf(stdout, " + %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTrie.wordCount(), myThreadId);fflush(NULL);
         }
         pthread_barrier_wait(&mBarrier);
 
-/* Update the dword matching lists */
-        for (unsigned index = myThreadId ; index < mDWords.indexVec.size() ; index += NUM_THREADS) {
+
+        /** [02.]
+         * Update the dword matching lists, with the results of the above intersection
+         */
+        for (unsigned index = myThreadId ; index < mDWords.size() ; index += NUM_THREADS) {
             Word *dw = GWDB.getWord(mDWords.indexVec[index]);
 
             for (unsigned j=mQWLastEdit ; j<mQW[MT_EDIT_DIST].size() ; j++)
@@ -272,7 +276,10 @@ void* Thread(void *param)
         }
         pthread_barrier_wait(&mBarrier);
 
-/* Append New Doc Words both to the Normal Trie and the Temp one  */
+
+        /** [03.]
+         * Append new_dwords, both to the Normal Trie and the Temp one
+         */
         if (myThreadId==0)
         {
             mQWLastEdit = mQW[MT_EDIT_DIST].size();
@@ -288,19 +295,25 @@ void* Thread(void *param)
         }
         pthread_barrier_wait(&mBarrier);
 
-/* Calculate distances of:  {all qwords_edit} - {new dwords}  */
-        for (unsigned index=myThreadId ; index < mQW[MT_EDIT_DIST].indexVec.size() ; index += NUM_THREADS) {
+
+        /** [04.]
+         * Calculate EDIT Dist of:  { all_qwords_edit } ... { new_dwords }
+         */
+        for (unsigned index=myThreadId ; index < mQW[MT_EDIT_DIST].size() ; index += NUM_THREADS) {
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
             mDTempTrie.dfaIntersect(w);
             //~ fprintf(stdout, " - %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
         }
         pthread_barrier_wait(&mBarrier);
 
-/* Update the dword matching lists */
+
+        /** [05.]
+         * Update the dword matching lists, with the results of the above intersection
+         */
         for (unsigned index = myThreadId ; index < mDTempWords.size() ; index += NUM_THREADS) {
             Word *dw = mDTempWords[index];
 
-            for (unsigned j=mQWLastEdit ; j<mQW[MT_EDIT_DIST].size() ; j++)
+            for (unsigned j=0 ; j<mQW[MT_EDIT_DIST].size() ; j++)
                 if (dw->qWordsDist_edit[j] <= 3)
                     dw->editMatches[(int)dw->qWordsDist_edit[j]].insert(j);
 
@@ -315,7 +328,10 @@ void* Thread(void *param)
         }
         pthread_barrier_wait(&mBarrier);
 
-/* Detrmine the matches and deliver docs */
+
+        /** [06.]
+         * Detrmine the matches and deliver docs
+         */
         if (myThreadId==0) {
             pthread_mutex_lock(&mPendingDocs_mutex);
             if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
@@ -334,11 +350,12 @@ void* Thread(void *param)
         pthread_barrier_wait(&mBarrier);
 
 
-        /* LAST PHASE */
+        /**
+         * Finally, clean up our global structures
+         */
         if (myThreadId==0)
         {
             //~ fprintf(stdout, ">> BATCH %-3d:  batch Docs = %u  |  activeQueries = %-4u  |  mQW(edit) = %-4u  |  newDocWords = %-4u  |  mDWords = %-5u  |  \n", mBatchId, mParsedDocs.size(), mActiveQueries.size(), mQW[2].size(), mDTempTrie.wordCount(), mDWords.size()); fflush(NULL);
-
             mParsedDocs.clear();
             mDTempTrie.clear();
             mDTempWords.clear();
@@ -346,7 +363,6 @@ void* Thread(void *param)
             mBatchId++;
         }
         pthread_barrier_wait(&mBarrier);
-
 
     }
 

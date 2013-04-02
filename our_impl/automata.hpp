@@ -209,7 +209,7 @@ public:
             dist = (long) states[i].getWord();
             if (dist && dist<min) min = dist;
         }
-        if (min<10) return min;
+        if (min!=10) return min;
         else return 0;
     }
 
@@ -307,8 +307,8 @@ public:
     }
 
     void dfaIntersect (Word *word) {
-        DFATrie &dfa1 = *this;
-        DFALevenstein &dfa2 = word->dfa != NULL ? *word->dfa : *(word->dfa=new DFALevenstein(word->txt, 3));
+        DFATrie &trie = *this;
+        DFALevenstein &autom = word->dfa != NULL ? *word->dfa : *(word->dfa=new DFALevenstein(word->txt, 3));
 
         unsigned sp = 0;    // StackPointer
         vector<StatePair> stack;
@@ -316,22 +316,23 @@ public:
         stack[0].s1 = 0;
         stack[0].s2 = 0;
 
-        struct StatePair ns;
+        StatePair ns;
+        StateIndex t1, t2;
 
         while (sp < stack.size())
         {
             /* Expand a dfa_state (combination of NFA States) */
             for (char t='a' ; t<='z'; t++)
             {
-                StateIndex t1 = dfa1[stack[sp].s1][t];
-                StateIndex t2 = dfa2[stack[sp].s2][t];
+                t1 = trie[stack[sp].s1][t];
+                t2 = autom[stack[sp].s2][t];
                 if( t1 != NO_TRANS && t2 != NO_TRANS) {  // Same Transition in both DFAs !
                     ns.s1 = t1;
                     ns.s2 = t2;
                     stack.push_back(ns);
-                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal()) {
-                        long d = dfa2.distance(t2);
-                        char* dold = &(((Word*)dfa1[t1].getWord())->qWordsDist_edit[word->qWIndex[MT_EDIT_DIST]]);
+                    if (trie[t1].isFinal() && autom[t2].isFinal()) {
+                        long d = autom.distance(t2);
+                        char* dold = &(((Word*)trie[t1].getWord())->qWordsDist_edit[word->qWIndex[MT_EDIT_DIST]]);
                         if (d < *dold) *dold = d;
                     }
                 }
