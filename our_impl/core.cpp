@@ -17,7 +17,7 @@
 #include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<18)
-#define NUM_THREADS  10
+#define NUM_THREADS  12
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -340,13 +340,48 @@ void* Thread(void *param)
         }
         pthread_barrier_wait(&mBarrier);
 
+        char* qwE = (char*) malloc(mQW[MT_EDIT_DIST].size());
+        char* qwH = (char*) malloc(mQW[MT_HAMMING_DIST].size());
+
         for (unsigned index=myThreadId ; index < mParsedDocs.size() ; index += NUM_THREADS) {
             Document &doc = mParsedDocs[index];
+
+            for (unsigned i=0 ; i<mQW[MT_EDIT_DIST].size() ; i++) qwE[i] = 10;
+            for (unsigned i=0 ; i<mQW[MT_HAMMING_DIST].size() ; i++) qwH[i] = 10;
+
+            for (unsigned index : doc.words->indexVec) {
+                for (int k=3 ; k>=0 ; k--) {
+                    for (unsigned qw : GWDB.getWord(index)->editMatches[k]) qwE[qw] = k;
+                    for (unsigned qw : GWDB.getWord(index)->hammMatches[k]) qwH[qw] = k;
+                }
+            }
+
+            int qwc;
+            for (unsigned qid=0 ; qid<mActiveQueries.size() ; qid++) {
+                Query &query = mActiveQueries[qid];
+
+                if (query.numWords==0 || query.type==MT_EXACT_MATCH) continue;
+
+                qwc=0;
+                char *qwVec = query.type==MT_EDIT_DIST ? qwE : qwH;
+                for (int qw=0 ; qw<query.numWords ; qw++) {
+                    if ( qwVec[query.words[qw]->qWIndex[query.type]] <= query.dist) ++qwc;
+                    else break;
+                }
+
+                if (qwc >= query.numWords) doc.matchingQueries->insert(qid);
+                //~ else if (qwc > query.numWords) printf("Oh men... :(  \n");   //// JUST FOR TESTING. SHOULD *NEVER* REACH HERE IF EVERYTHING IS CORRECT.
+
+            }
+
             pthread_mutex_lock(&mReadyDocs_mutex);
             mReadyDocs.push(doc);
             pthread_cond_broadcast(&mReadyDocs_cond);
             pthread_mutex_unlock(&mReadyDocs_mutex);
         }
+
+        free(qwE);
+        free(qwH);
         pthread_barrier_wait(&mBarrier);
 
 
