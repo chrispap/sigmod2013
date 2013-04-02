@@ -249,7 +249,7 @@ void* Thread(void *param)
         for (unsigned index = myThreadId+mQWLastEdit ; index < mQW[MT_EDIT_DIST].indexVec.size() ; index += NUM_THREADS) {
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
             mDTrie.dfaIntersect(w);
-            fprintf(stdout, " + %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTrie.wordCount(), myThreadId);fflush(NULL);
+            //~ fprintf(stdout, " + %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTrie.wordCount(), myThreadId);fflush(NULL);
         }
         pthread_barrier_wait(&mBarrier);
 
@@ -292,7 +292,7 @@ void* Thread(void *param)
         for (unsigned index=myThreadId ; index < mQW[MT_EDIT_DIST].indexVec.size() ; index += NUM_THREADS) {
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
             mDTempTrie.dfaIntersect(w);
-            fprintf(stdout, " - %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
+            //~ fprintf(stdout, " - %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
         }
         pthread_barrier_wait(&mBarrier);
 
@@ -316,9 +316,16 @@ void* Thread(void *param)
         pthread_barrier_wait(&mBarrier);
 
 /* Detrmine the matches and deliver docs */
+        if (myThreadId==0) {
+            pthread_mutex_lock(&mPendingDocs_mutex);
+            if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
+            pthread_cond_broadcast(&mPendingDocs_cond);
+            pthread_mutex_unlock(&mPendingDocs_mutex);
+        }
+        pthread_barrier_wait(&mBarrier);
+
         for (unsigned index=myThreadId ; index < mParsedDocs.size() ; index += NUM_THREADS) {
             Document &doc = mParsedDocs[index];
-
             pthread_mutex_lock(&mReadyDocs_mutex);
             mReadyDocs.push(doc);
             pthread_cond_broadcast(&mReadyDocs_cond);
@@ -330,25 +337,7 @@ void* Thread(void *param)
         /* LAST PHASE */
         if (myThreadId==0)
         {
-            fprintf(stdout, ">> BATCH %-3d:  "
-                "batch Docs = %u  |  "
-                "activeQueries = %-4u  |  "
-                "mQW(edit) = %-4u  |  "
-                "newDocWords = %-4u  |  "
-                "mDWords = %-5u  |  "
-                "\n",
-            mBatchId,
-            mParsedDocs.size(),
-            mActiveQueries.size(),
-            mQW[2].size(),
-            mDTempTrie.wordCount(),
-            mDWords.size());
-            fflush(NULL);
-
-            pthread_mutex_lock(&mPendingDocs_mutex);
-            if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
-            pthread_cond_broadcast(&mPendingDocs_cond);
-            pthread_mutex_unlock(&mPendingDocs_mutex);
+            //~ fprintf(stdout, ">> BATCH %-3d:  batch Docs = %u  |  activeQueries = %-4u  |  mQW(edit) = %-4u  |  newDocWords = %-4u  |  mDWords = %-5u  |  \n", mBatchId, mParsedDocs.size(), mActiveQueries.size(), mQW[2].size(), mDTempTrie.wordCount(), mDWords.size()); fflush(NULL);
 
             mParsedDocs.clear();
             mDTempTrie.clear();
