@@ -329,8 +329,11 @@ public:
                     ns.s1 = t1;
                     ns.s2 = t2;
                     stack.push_back(ns);
-                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal())
-                        word->editMatches[dfa2.distance(t2)].insert((Word*)dfa1[t1].getWord());
+                    if (dfa1[t1].isFinal() && dfa2[t2].isFinal()) {
+                        long d = dfa2.distance(t2);
+                        char* dold = &(((Word*)dfa1[t1].getWord())->qWordsDist_edit[word->qWIndex[MT_EDIT_DIST]]);
+                        if (d < *dold) *dold = d;
+                    }
                 }
             }
             sp++;

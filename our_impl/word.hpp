@@ -4,19 +4,24 @@
 struct Word
 {
     char            txt[MAX_WORD_LENGTH+1];         ///< The actual word :P
-    set<QueryID>    querySet[3];                    ///< Sets of queries matching this word. One set for each MatchType
-    set<DocID>      docSet;
-    set<Word*>      editMatches[4];                 ///< Lists with words. One for each edit distance.
-    set<Word*>      hammMatches[4];                 ///< Lists with words. One for each hamming distance.
-    int             length;                         ///< Strlen(txt);
+    int             length;                         ///< strlen(txt);
     unsigned        letterBits;                     ///< 1 bit for every char [a-z]
+
+    /* Query Word specific */
+    set<QueryID>    querySet[3];                    ///< Sets of queries matching this word. One set for each MatchType.
+    int             qWIndex[3];                     ///< Index of this word to the query word tables.
     DFALevenstein   *dfa;
 
+    /* Doc Word specific */
+    set<unsigned>   editMatches[4];                 ///< Lists of words. One for each edit distance.
+    set<unsigned>   hammMatches[4];                 ///< Lists of words. One for each hamming distance.
+    char            *qWordsDist_edit;
+    char            *qWordsDist_hamm;
+
     /** Store the new word and populate the data structures */
-    Word (const char *c1, const char *c2) :
-        letterBits(0),
-        dfa(NULL)
-    {
+    Word (const char *c1, const char *c2) {
+        letterBits = 0;
+        dfa = NULL;
         int i=0;
         while (c1!=c2) {
             letterBits |= 1 << (*c1-'a');
@@ -24,6 +29,12 @@ struct Word
         }
         length = i;
         while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
+
+        qWordsDist_edit = (char *) malloc(600);
+        for (i=0; i<300; i++) qWordsDist_edit[i]=10;
+
+        qWordsDist_hamm = (char *) malloc(600);
+        for (i=0; i<300; i++) qWordsDist_hamm[i]=10;
     }
 
     bool equals(const char *c1, const char *c2) const {
