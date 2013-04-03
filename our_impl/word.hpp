@@ -1,6 +1,8 @@
 #ifndef WORD_H
 #define WORD_H
 
+#define ABC (1024*16)
+
 struct Word
 {
     char            txt[MAX_WORD_LENGTH+1];         ///< The actual word :P
@@ -30,11 +32,11 @@ struct Word
         length = i;
         while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
 
-        qWordsDist_edit = (char *) malloc(300);
-        for (i=0; i<300; i++) qWordsDist_edit[i]=10;
+        qWordsDist_edit = (char *) malloc(ABC);
+        for (i=0; i<ABC; i++) qWordsDist_edit[i]=10;
 
-        qWordsDist_hamm = (char *) malloc(300);
-        for (i=0; i<300; i++) qWordsDist_hamm[i]=10;
+        qWordsDist_hamm = (char *) malloc(ABC);
+        for (i=0; i<ABC; i++) qWordsDist_hamm[i]=10;
     }
 
     bool equals(const char *c1, const char *c2) const {
