@@ -19,7 +19,7 @@
 #include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<18)
-#define NUM_THREADS  1
+#define NUM_THREADS  10
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -431,7 +431,7 @@ void ParseDoc(Document &doc, const long thread_id)
         do {++c2;} while (*c2!=' ' && *c2 );
 
         bool F1 = GWDB.insert(c1, c2, &nw_index, &nw);
-        bool F2 = F1 ? false : mQW[MT_EXACT_MATCH].exists(nw_index);
+        //~ bool F2 = F1 ? false : mQW[MT_EXACT_MATCH].exists(nw_index);
         bool F3 = doc.words->insert(nw_index);
 
         if (F3) {
