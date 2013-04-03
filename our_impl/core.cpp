@@ -270,7 +270,7 @@ void* Thread(void *param)
 
             for (unsigned j=mQWLastHamm ; j<mQW[MT_HAMMING_DIST].size() ; j++) {
                 Word* qw = GWDB.getWord(mQW[MT_HAMMING_DIST].indexVec[j]);
-                if (qw->length == dw->length && qw->letterDiff(dw)<6) {
+                if (qw->length == dw->length && qw->letterDiff(dw)<=6) {
                     int hammDist = dw->HammingDist(qw);
                     if (hammDist<=3) dw->hammMatches[hammDist].insert(j);
                 }
@@ -322,7 +322,7 @@ void* Thread(void *param)
 
             for (unsigned j=0 ; j<mQW[MT_HAMMING_DIST].size() ; j++) {
                 Word* qw = GWDB.getWord(mQW[MT_HAMMING_DIST].indexVec[j]);
-                if (qw->length == dw->length && qw->letterDiff(dw)<6) {
+                if (qw->length == dw->length && qw->letterDiff(dw)<=6) {
                     int hammDist = dw->HammingDist(qw);
                     if (hammDist<=3) dw->hammMatches[hammDist].insert(j);
                 }
