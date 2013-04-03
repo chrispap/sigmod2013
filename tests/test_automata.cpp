@@ -85,40 +85,40 @@ const char* words_not_in[] = {
     "m",
 };
 
-//~ int loadWords (DFATrie &trie)
-//~ {
-    //~ for (const char *w : words_in) trie.insertWord(w);
-//~ 
-    //~ for (const char *w : words_in)
-        //~ if (!trie.searchWord(w)) printf(">> Did not find word: %s although it has been inserted. \n", w);
-//~ 
-    //~ for (const char *w : words_not_in)
-        //~ if (trie.searchWord(w)) printf(">> Find word: %s although it has NOT been inserted. \n", w);
-//~ 
-    //~ return 0;
-//~ }
-//~ 
-//~ int loadFile (DFATrie &trie, const char* filename)
-//~ {
-    //~ char W[32];
-    //~ int count=0;
-    //~ FILE* file = fopen(filename, "rt");
-    //~ if (!file) return -1;
-//~ 
-    //~ int v=GetClockTimeInMilliSec();
-    //~ while (EOF != fscanf(file,"%s", W)) {
-        //~ if (trie.insertWord(W))
-            //~ count++;
-    //~ }
-//~ 
-    //~ if ( count >=0 ) {
-        //~ printf(">> Loaded %d unique words in: ", count);
-        //~ PrintTime(v=GetClockTimeInMilliSec()-v);
-    //~ }
-//~ 
-    //~ fclose(file);
-    //~ return count;
-//~ }
+int loadWords (DFATrie &trie)
+{
+    for (const char *w : words_in) trie.insertWord(w);
+
+    for (const char *w : words_in)
+        if (!trie.searchWord(w)) printf(">> Did not find word: %s although it has been inserted. \n", w);
+
+    for (const char *w : words_not_in)
+        if (trie.searchWord(w)) printf(">> Find word: %s although it has NOT been inserted. \n", w);
+
+    return 0;
+}
+
+int loadFile (DFATrie &trie, const char* filename)
+{
+    char W[32];
+    int count=0;
+    FILE* file = fopen(filename, "rt");
+    if (!file) return -1;
+
+    int v=GetClockTimeInMilliSec();
+    while (EOF != fscanf(file,"%s", W)) {
+        if (trie.insertWord(W))
+            count++;
+    }
+
+    if ( count >=0 ) {
+        printf(">> Loaded %d unique words in: ", count);
+        PrintTime(v=GetClockTimeInMilliSec()-v);
+    }
+
+    fclose(file);
+    return count;
+}
 
 void menu (DFATrie &trie)
 {
@@ -164,15 +164,11 @@ int main(int argc, char* argv[])
     /* Populate the trie */
     DFATrie trie;
     //~ loadWords(trie);
-    //loadFile(trie, "../test_data/queries_big.txt");
+    loadFile(trie, "../test_data/queries_big.txt");
     printf(">> Trie now contains %d words. \n", trie.wordCount());
     printf(">> Trie now contains %d states. \n\n", trie.stateCount());
 
     /* Check for matches */
-
-
-
-	printf("%s\n",words_in[3]);
     const char* W = "chris";
     int t=3;
 
