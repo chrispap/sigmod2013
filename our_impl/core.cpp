@@ -120,15 +120,17 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
     while(*c2==' ') ++c2;                                       // Skip any spaces
     for (c1=c2;*c2;c1=c2+1) {                                   // For each query word
         do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
+
         GWDB.insert(c1, c2, &nw_index, &nw);                    // Store the word in the GWDB
-        nw->querySet[match_type].insert(query_id);              // Update the appropriate query set based on the match_type
         mActiveQueries[query_id].words[num_words] = nw;         // Add the word to the query
+
         if (mQW[match_type].insert(nw_index)) {
             if (match_type==MT_EXACT_MATCH)
                 nw->qWIndex[0] = nw_index;
             else
                 nw->qWIndex[match_type] = mQW[match_type].size()-1; // The index of that word to the table of that specific match-type words.
         }
+
         num_words++;
     }
 
@@ -140,12 +142,7 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 
 ErrorCode EndQuery(QueryID query_id)
 {
-    Query &del_query = mActiveQueries[query_id];                        // The Query to delete
-
-    for (int i=0; i<del_query.numWords; i++)                            // Erase this query from all the words it contained
-        del_query.words[i]->querySet[del_query.type].erase(query_id);
-
-    del_query.numWords=0;                                               // Mark the query as "deleted" by setting numWords to zero.
+    mActiveQueries[query_id].numWords=0;
     return EC_SUCCESS;
 }
 
@@ -366,14 +363,14 @@ void* Thread(void *param)
 
             for (unsigned qid=0 ; qid<mActiveQueries.size() ; qid++) {
                 Query &q = mActiveQueries[qid];
-                if (q.numWords==0 /*|| q.type==MT_EXACT_MATCH*/) continue;
+                if (q.numWords==0) continue;
 
                 int qwc=0;
 
                 if (q.type==MT_EXACT_MATCH)
                 {
                     for (int qwi=0 ; qwi<q.numWords ; qwi++)
-                        if (doc.words->exists( q.words[qwi]->qWIndex[0] )) ++qwc;
+                        if (doc.words->exists(q.words[qwi]->qWIndex[0])) ++qwc;
                         else break;
                 }
                 else
@@ -420,9 +417,6 @@ void* Thread(void *param)
 
 void ParseDoc(Document &doc, const long thread_id)
 {
-    //~ unordered_map<QueryID, char> query_stats;
-    //~ query_stats.reserve(mActiveQueries.size());
-
     const char *c1, *c2 = doc.str;
     Word* nw; unsigned nw_index;
     while(*c2==' ') ++c2;
@@ -430,27 +424,13 @@ void ParseDoc(Document &doc, const long thread_id)
     for (c1=c2;*c2;c1=c2+1) {
         do {++c2;} while (*c2!=' ' && *c2 );
 
-        bool F1 = GWDB.insert(c1, c2, &nw_index, &nw);
-        //~ bool F2 = F1 ? false : mQW[MT_EXACT_MATCH].exists(nw_index);
-        bool F3 = doc.words->insert(nw_index);
+        GWDB.insert(c1, c2, &nw_index, &nw);
 
-        if (F3) {
+        if (doc.words->insert(nw_index)) {
             pthread_mutex_lock(&mParsedDocs_mutex);
             mBatchWords.insert(nw_index);
             pthread_mutex_unlock(&mParsedDocs_mutex);
         }
-
-        //~ if (!F1 &&  F2 &&  F3)
-            //~ for (QueryID qid : nw->querySet[MT_EXACT_MATCH])
-                //~ query_stats[qid]++;
-
     }
-
-    //~ for (auto qc : query_stats) {
-        //~ if (qc.second == mActiveQueries[qc.first].numWords) {
-            //~ doc.matchingQueries->insert(qc.first);
-        //~ }
-    //~ }
-
 }
 
