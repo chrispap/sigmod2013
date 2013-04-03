@@ -30,10 +30,10 @@ struct Word
         length = i;
         while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
 
-        qWordsDist_edit = (char *) malloc(600);
+        qWordsDist_edit = (char *) malloc(300);
         for (i=0; i<300; i++) qWordsDist_edit[i]=10;
 
-        qWordsDist_hamm = (char *) malloc(600);
+        qWordsDist_hamm = (char *) malloc(300);
         for (i=0; i<300; i++) qWordsDist_hamm[i]=10;
     }
 

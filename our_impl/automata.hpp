@@ -332,6 +332,7 @@ public:
                     stack.push_back(ns);
                     if (trie[t1].isFinal() && autom[t2].isFinal()) {
                         long d = autom.distance(t2);
+                        //~ if (!strcmp(word->txt, "amiri") && d<2) raise (SIGINT);
                         char* dold = &(((Word*)trie[t1].getWord())->qWordsDist_edit[word->qWIndex[MT_EDIT_DIST]]);
                         if (d < *dold) *dold = d;
                     }

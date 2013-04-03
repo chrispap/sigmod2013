@@ -10,6 +10,8 @@
 #include <utility>
 #include <core.h>
 
+#include <csignal>
+
 #include "indexHashTable.hpp"
 #include "automata.hpp"
 #include "word.hpp"
@@ -17,7 +19,7 @@
 #include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<18)
-#define NUM_THREADS  12
+#define NUM_THREADS  10
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -351,15 +353,16 @@ void* Thread(void *param)
 
             for (unsigned index : doc.words->indexVec) {
                 for (int k=3 ; k>=0 ; k--) {
-                    for (unsigned qw : GWDB.getWord(index)->editMatches[k]) qwE[qw] = k;
-                    for (unsigned qw : GWDB.getWord(index)->hammMatches[k]) qwH[qw] = k;
+                    for (unsigned qw : GWDB.getWord(index)->editMatches[k])
+                        if (k < qwE[qw]) qwE[qw] = k;
+                    for (unsigned qw : GWDB.getWord(index)->hammMatches[k])
+                        if (k < qwH[qw]) qwH[qw] = k;
                 }
             }
 
             int qwc;
             for (unsigned qid=0 ; qid<mActiveQueries.size() ; qid++) {
                 Query &query = mActiveQueries[qid];
-
                 if (query.numWords==0 || query.type==MT_EXACT_MATCH) continue;
 
                 qwc=0;

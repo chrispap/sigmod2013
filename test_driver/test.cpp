@@ -160,6 +160,7 @@ void TestSigmod(const char* test_file_str)
                     fflush(NULL);
                     if (!IGNR) return;
                 }
+                //~ else printf("Doc ID %u. correct. \n", doc_id);
 
                 cur_results_ret[doc_id-first_result]=true;
                 if(num_res && query_ids) free(query_ids);
