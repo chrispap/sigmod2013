@@ -19,7 +19,7 @@
 #include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<18)
-#define NUM_THREADS  10
+#define NUM_THREADS  1
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -123,8 +123,12 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
         GWDB.insert(c1, c2, &nw_index, &nw);                    // Store the word in the GWDB
         nw->querySet[match_type].insert(query_id);              // Update the appropriate query set based on the match_type
         mActiveQueries[query_id].words[num_words] = nw;         // Add the word to the query
-        if (mQW[match_type].insert(nw_index))
-            nw->qWIndex[match_type] = mQW[match_type].size()-1; // The index of that word to the table of that specific match-type words.
+        if (mQW[match_type].insert(nw_index)) {
+            if (match_type==MT_EXACT_MATCH)
+                nw->qWIndex[0] = nw_index;
+            else
+                nw->qWIndex[match_type] = mQW[match_type].size()-1; // The index of that word to the table of that specific match-type words.
+        }
         num_words++;
     }
 
@@ -155,7 +159,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     newDoc.id = doc_id;
     newDoc.str = new_doc_str;
     newDoc.words = new IndexHashTable(HASH_SIZE, 1);
-    newDoc.matchingQueries = new set<QueryID>();
+    newDoc.matchingQueries = new vector<QueryID>();
 
     pthread_mutex_lock(&mPendingDocs_mutex);
     mPendingDocs.push(newDoc);
@@ -360,21 +364,27 @@ void* Thread(void *param)
                 }
             }
 
-            int qwc;
             for (unsigned qid=0 ; qid<mActiveQueries.size() ; qid++) {
-                Query &query = mActiveQueries[qid];
-                if (query.numWords==0 || query.type==MT_EXACT_MATCH) continue;
+                Query &q = mActiveQueries[qid];
+                if (q.numWords==0 /*|| q.type==MT_EXACT_MATCH*/) continue;
 
-                qwc=0;
-                char *qwVec = query.type==MT_EDIT_DIST ? qwE : qwH;
-                for (int qw=0 ; qw<query.numWords ; qw++) {
-                    if ( qwVec[query.words[qw]->qWIndex[query.type]] <= query.dist) ++qwc;
-                    else break;
+                int qwc=0;
+
+                if (q.type==MT_EXACT_MATCH)
+                {
+                    for (int qwi=0 ; qwi<q.numWords ; qwi++)
+                        if (doc.words->exists( q.words[qwi]->qWIndex[0] )) ++qwc;
+                        else break;
+                }
+                else
+                {
+                    char *qwVec = q.type==MT_EDIT_DIST ? qwE : qwH;
+                    for (int qwi=0 ; qwi<q.numWords ; qwi++)
+                        if ( qwVec[q.words[qwi]->qWIndex[q.type]] <= q.dist) ++qwc;
+                        else break;
                 }
 
-                if (qwc >= query.numWords) doc.matchingQueries->insert(qid);
-                //~ else if (qwc > query.numWords) printf("Oh men... :(  \n");   //// JUST FOR TESTING. SHOULD *NEVER* REACH HERE IF EVERYTHING IS CORRECT.
-
+                if (qwc == q.numWords) doc.matchingQueries->push_back(qid);
             }
 
             pthread_mutex_lock(&mReadyDocs_mutex);
@@ -410,8 +420,8 @@ void* Thread(void *param)
 
 void ParseDoc(Document &doc, const long thread_id)
 {
-    unordered_map<QueryID, char> query_stats;
-    query_stats.reserve(mActiveQueries.size());
+    //~ unordered_map<QueryID, char> query_stats;
+    //~ query_stats.reserve(mActiveQueries.size());
 
     const char *c1, *c2 = doc.str;
     Word* nw; unsigned nw_index;
@@ -430,17 +440,17 @@ void ParseDoc(Document &doc, const long thread_id)
             pthread_mutex_unlock(&mParsedDocs_mutex);
         }
 
-        if (!F1 &&  F2 &&  F3)
-            for (QueryID qid : nw->querySet[MT_EXACT_MATCH])
-                query_stats[qid]++;
+        //~ if (!F1 &&  F2 &&  F3)
+            //~ for (QueryID qid : nw->querySet[MT_EXACT_MATCH])
+                //~ query_stats[qid]++;
 
     }
 
-    for (auto qc : query_stats) {
-        if (qc.second == mActiveQueries[qc.first].numWords) {
-            doc.matchingQueries->insert(qc.first);
-        }
-    }
+    //~ for (auto qc : query_stats) {
+        //~ if (qc.second == mActiveQueries[qc.first].numWords) {
+            //~ doc.matchingQueries->insert(qc.first);
+        //~ }
+    //~ }
 
 }
 

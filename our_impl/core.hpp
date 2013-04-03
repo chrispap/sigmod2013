@@ -16,7 +16,7 @@ struct Document
     DocID           id;
     char            *str;
     IndexHashTable  *words;
-    set<QueryID>    *matchingQueries;
+    vector<QueryID> *matchingQueries;
 };
 
 #endif
