@@ -261,7 +261,7 @@ void* Thread(void *param)
         for (unsigned index = myThreadId+mQWLastEdit ; index < mQW[MT_EDIT_DIST].size() ; index += NUM_THREADS) {
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
             mDTrie.dfaIntersect(w);
-            fprintf(stdout, " + %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTrie.wordCount(), myThreadId);fflush(NULL);
+            //~ fprintf(stdout, " + %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTrie.wordCount(), myThreadId);fflush(NULL);
         }
         pthread_barrier_wait(&mBarrier);
 
@@ -313,7 +313,7 @@ void* Thread(void *param)
         for (unsigned index=myThreadId ; index < mQW[MT_EDIT_DIST].size() ; index += NUM_THREADS) {
             Word *w = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
             mDTempTrie.dfaIntersect(w);
-            fprintf(stdout, " - %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
+            //~ fprintf(stdout, " - %-10s was intersected with %-5u words by thread# %ld \n", w->txt, mDTempTrie.wordCount(), myThreadId);fflush(NULL);
         }
         pthread_barrier_wait(&mBarrier);
 
@@ -408,8 +408,8 @@ void* Thread(void *param)
          */
         if (myThreadId==0)
         {
+            fprintf(stdout, ">> BATCH %-3d:  batch Docs = %u   |  newDocWords = %u  |   \n", mBatchId, mParsedDocs.size(), mDTempWords.size()); fflush(NULL);
             printStats();
-            fprintf(stdout, ">> BATCH %-3d:  batch Docs = %u  = %-4u  |  newDocWords = %-4u  |   \n", mBatchId, mParsedDocs.size(), mDTempTrie.wordCount()); fflush(NULL);
             mParsedDocs.clear();
             mDTempTrie.clear();
             mDTempWords.clear();
