@@ -18,8 +18,8 @@
 #include "core.hpp"
 #include "wordHashTable.hpp"
 
-#define HASH_SIZE    (1<<18)
-#define NUM_THREADS  10
+#define HASH_SIZE    (1<<20)
+#define NUM_THREADS  14
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -208,10 +208,11 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 /* Our Functions */
 void printStats()
 {
-    fprintf(stdout, "\n=== WORDS ==================================================\n");
-    fprintf(stdout, "GWDB    Exact   Hamming   Edit   DocWords   ActiveQueries \n");
-    fprintf(stdout, "%-5u   %-5u   %-7u   %-4u   %-8u   %-13u   \n", GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mDWords.size(), mActiveQueries.size());
-    fprintf(stdout, "============================================================\n");
+    fprintf(stdout, "\n=== STATS ================================== BATCH ==================================================\n");
+    fprintf(stdout, "GWDB    Exact   Hamming   Edit   DocWords  |  BatchID   ActiveQueries   batchDocs   newDWords   \n");
+    fprintf(stdout, "%-5u   %-5u   %-7u   %-4u   %-8u  |  %-7d   %-13lu   %-9lu   %-9lu   \n",
+                     GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mDWords.size(), mBatchId, mActiveQueries.size(), mParsedDocs.size(), mDTempWords.size() );
+    fprintf(stdout, "=====================================================================================================\n");
     fflush(NULL);
 }
 
@@ -408,7 +409,6 @@ void* Thread(void *param)
          */
         if (myThreadId==0)
         {
-            fprintf(stdout, ">> BATCH %-3d:  batch Docs = %u   |  newDocWords = %u  |   \n", mBatchId, mParsedDocs.size(), mDTempWords.size()); fflush(NULL);
             printStats();
             mParsedDocs.clear();
             mDTempTrie.clear();

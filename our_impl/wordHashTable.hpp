@@ -56,7 +56,7 @@ public:
      *  @return true if a new Word was created or false if an equivalent Word already existed
      */
     bool insert (const char *c1, const char *c2, unsigned* inserted_word_index, Word** inserted_word) {
-        //~ lock();
+        lock();
         unsigned index = hash(c1, c2);
         while (table[index] && !table[index]->equals(c1, c2)) index = (index+1) % capacity;
         if (!table[index]) {
@@ -64,12 +64,12 @@ public:
             mSize++;
             *inserted_word_index = index;
             *inserted_word = table[index];
-            //~ unlock();
+            unlock();
             return true;
         }
         *inserted_word_index = index;
         *inserted_word = table[index];
-        //~ unlock();
+        unlock();
         return false;
     }
 
