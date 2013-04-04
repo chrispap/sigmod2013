@@ -55,31 +55,28 @@ public:
      *  @param c2 One char past the last char of the string to insert.
      *  @return true if a new Word was created or false if an equivalent Word already existed
      */
-    bool insert (const char *c1, const char *c2, unsigned* inserted_word_index, Word** inserted_word) {
-        lock();
+    bool insert (const char *c1, const char *c2, Word** inserted_word) {
+        //~ lock();
         unsigned index = hash(c1, c2);
         while (table[index] && !table[index]->equals(c1, c2)) index = (index+1) % capacity;
         if (!table[index]) {
-            table[index] = new Word(c1, c2);
+            table[index] = new Word(c1, c2, index);
             mSize++;
-            *inserted_word_index = index;
             *inserted_word = table[index];
-            unlock();
+            //~ unlock();
             return true;
         }
-        *inserted_word_index = index;
         *inserted_word = table[index];
-        unlock();
+        //~ unlock();
         return false;
     }
 
-    bool exists (const char *c1, const char *c2, unsigned* inserted_word_index, Word** inserted_word) {
+    bool exists (const char *c1, const char *c2, Word** inserted_word) {
         unsigned index = hash(c1, c2);
         while (table[index] && !table[index]->equals(c1, c2)) index = (index+1) % capacity;
         if (!table[index]) {
             return false;
         }
-        *inserted_word_index = index;
         *inserted_word = table[index];
         return true;
     }

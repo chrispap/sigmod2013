@@ -1,26 +1,30 @@
 #ifndef WORD_H
 #define WORD_H
 
-#define ABC (13000 )
-
 struct Word
 {
     char            txt[MAX_WORD_LENGTH+1];         ///< The actual word :P
     int             length;                         ///< strlen(txt);
     unsigned        letterBits;                     ///< 1 bit for every char [a-z]
 
-    /* Query Word specific */
-    int             qWIndex[3];                     ///< Index of this word to the query word tables.
+    /* qword */
+    unsigned        gwdbIndex;
+    int             qwindex[3];                     ///< Index of this word to the query word tables.
+    set<QueryID>    querySet;
     DFALevenstein   *dfa;
 
-    /* Doc Word specific */
+    /* dword */
+    unsigned lastCheck_edit;
+    unsigned lastCheck_hamm;
+
     set<unsigned>   editMatches[4];                 ///< Lists of words. One for each edit distance.
     set<unsigned>   hammMatches[4];                 ///< Lists of words. One for each hamming distance.
-    char            *qWordsDist_edit;
-    char            *qWordsDist_hamm;
 
     /** Store the new word and populate the data structures */
-    Word (const char *c1, const char *c2) {
+    Word (const char *c1, const char *c2, unsigned globindex) {
+        gwdbIndex=globindex;
+        lastCheck_edit=0;
+        lastCheck_hamm=0;
         letterBits = 0;
         dfa = NULL;
         int i=0;
@@ -30,12 +34,6 @@ struct Word
         }
         length = i;
         while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
-
-        qWordsDist_edit = (char *) malloc(ABC);
-        for (i=0; i<ABC; i++) qWordsDist_edit[i]=10;
-
-        qWordsDist_hamm = (char *) malloc(ABC);
-        for (i=0; i<ABC; i++) qWordsDist_hamm[i]=10;
     }
 
     bool equals(const char *c1, const char *c2) const {

@@ -268,6 +268,13 @@ public:
         return (((long)(states[index].getWord()))-1);
     }
 
+    long distance (const char*str) {
+        StateIndex s;
+        if ((s=evaluateInput(str)) != NO_TRANS)
+            return distance(s);
+        else return 10;
+    }
+
 };
 
 #include "word.hpp"
@@ -331,9 +338,14 @@ public:
                     ns.s2 = t2;
                     stack.push_back(ns);
                     if (trie[t1].isFinal() && autom[t2].isFinal()) {
-                        long d = autom.distance(t2);
-                        char* dold = &(((Word*)trie[t1].getWord())->qWordsDist_edit[word->qWIndex[MT_EDIT_DIST]]);
-                        if (d < *dold) *dold = d;
+                        /* Remove it beacuse we dont use this functions any more
+                         * and the data on which it depends dont exist.
+                         *
+                             long d = autom.distance(t2);
+                             char* dold = &(((Word*)trie[t1].getWord())->qWordsDist_edit[word->qWIndex[MT_EDIT_DIST]]);
+                             if (d < *dold) *dold = d;
+                         *
+                         */
                     }
                 }
             }
