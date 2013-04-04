@@ -1,7 +1,7 @@
 #ifndef WORD_H
 #define WORD_H
 
-#define ABC (1024 )
+#define ABC (13000 )
 
 struct Word
 {

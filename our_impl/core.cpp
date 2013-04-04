@@ -340,7 +340,7 @@ void* Thread(void *param)
 
 
         /** [06.]
-         * Determine the matches and deliver docs
+         * Signal the end of matching phase
          */
         if (myThreadId==0) {
             pthread_mutex_lock(&mPendingDocs_mutex);
@@ -350,6 +350,9 @@ void* Thread(void *param)
         }
         pthread_barrier_wait(&mBarrier);
 
+        /** [07.]
+         * Determine the matches and deliver docs
+         */
         char* qwE = (char*) malloc(mQW[MT_EDIT_DIST].size());
         char* qwH = (char*) malloc(mQW[MT_HAMMING_DIST].size());
 
@@ -407,7 +410,7 @@ void* Thread(void *param)
          */
         if (myThreadId==0)
         {
-            //~ printStats();
+            printStats();
             mParsedDocs.clear();
             mDTempTrie.clear();
             mDTempWords.clear();
