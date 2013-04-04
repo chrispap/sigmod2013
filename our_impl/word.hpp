@@ -1,7 +1,7 @@
 #ifndef WORD_H
 #define WORD_H
 
-#define ABC (1024*13)
+#define ABC (1024 )
 
 struct Word
 {
@@ -10,7 +10,6 @@ struct Word
     unsigned        letterBits;                     ///< 1 bit for every char [a-z]
 
     /* Query Word specific */
-    set<QueryID>    querySet[3];                    ///< Sets of queries matching this word. One set for each MatchType.
     int             qWIndex[3];                     ///< Index of this word to the query word tables.
     DFALevenstein   *dfa;
 

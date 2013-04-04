@@ -189,9 +189,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     if(*p_num_res) {
         QueryID *mq = (QueryID*) malloc (*p_num_res * sizeof(QueryID));
         auto qi = res.matchingQueries->begin();
-        for(unsigned i=0; i!=*p_num_res ; i++) {
-            mq[i] = *qi++;
-        }
+        for(unsigned i=0; i!=*p_num_res ; i++) mq[i] = *qi++;
         *p_query_ids = mq;
     }
     else *p_query_ids=NULL;
@@ -208,18 +206,18 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 /* Our Functions */
 void printStats()
 {
-    fprintf(stdout, "\n=== STATS ================================== BATCH ==================================================\n");
+    fprintf(stdout, "\n=== STATS ================================== BATCH =============================================================================\n");
     fprintf(stdout, "GWDB     Exact   Hamming   Edit   DocWords  |  BatchID   ActiveQueries   batchDocs   batchWords   newDWords   \n");
     fprintf(stdout, "%-6u   %-5u   %-7u   %-4u   %-8u  |  %-7d   %-13lu   %-9lu   %-10u   %-9lu   \n",
-                     GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mDWords.size(), mBatchId, mActiveQueries.size(), mParsedDocs.size(), mBatchWords.size(), mDTempWords.size() );
-    fprintf(stdout, "=====================================================================================================\n");
+                     GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mDWords.size(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size(), mBatchWords.size(), (unsigned long) mDTempWords.size() );
+    fprintf(stdout, "================================================================================================================================\n");
     fflush(NULL);
 }
 
 void* Thread(void *param)
 {
     long myThreadId = (long) param;
-    fprintf(stdout, ">> THREAD#%2ld STARTS \n", myThreadId); fflush(stdout);
+    //~ fprintf(stdout, ">> THREAD#%2ld STARTS \n", myThreadId); fflush(stdout);
 
     while (1)
     {
@@ -409,7 +407,7 @@ void* Thread(void *param)
          */
         if (myThreadId==0)
         {
-            printStats();
+            //~ printStats();
             mParsedDocs.clear();
             mDTempTrie.clear();
             mDTempWords.clear();
@@ -420,7 +418,7 @@ void* Thread(void *param)
 
     }
 
-    fprintf(stdout, ">> THREAD#%2ld EXITS \n", myThreadId); fflush(stdout);
+    //~ fprintf(stdout, ">> THREAD#%2ld EXITS \n", myThreadId); fflush(stdout);
     return NULL;
 }
 
