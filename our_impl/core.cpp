@@ -256,11 +256,11 @@ void* Thread(void *param)
         /** [01.]
          *  Construct the DFAs of new arrivals of edit qwords.
          */
-        for (unsigned index = myThreadId+mQWLastEdit ; index < mQW[MT_EDIT_DIST].size() ; index += NUM_THREADS) {
-            Word *qw = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
-            if (qw->dfa==NULL) qw->dfa = new DFALevenstein(qw->txt, 3);
-        }
-        pthread_barrier_wait(&mBarrier);
+        //~ for (unsigned index = myThreadId+mQWLastEdit ; index < mQW[MT_EDIT_DIST].size() ; index += NUM_THREADS) {
+            //~ Word *qw = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
+            //~ if (qw->dfa==NULL) qw->dfa = new DFALevenstein(qw->txt, 3);
+        //~ }
+        //~ pthread_barrier_wait(&mBarrier);
 
         if (myThreadId==0) {
             mQWLastEdit = mQW[MT_EDIT_DIST].size();
@@ -277,7 +277,7 @@ void* Thread(void *param)
             for (unsigned j=dw->lastCheck_edit ; j<mQW[MT_EDIT_DIST].size() ; j++) {
                 Word* qw = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[j]);
                 if (abs(qw->length - dw->length)<=3 && qw->letterDiff(dw)<=6) {
-                    int dist = qw->dfa->distance(dw->txt);
+                    int dist = qw->EditDist(dw);
                     if (dist<=3) dw->editMatches[dist].insert(j);
                 }
             }
