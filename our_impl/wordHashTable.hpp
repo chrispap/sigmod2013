@@ -8,16 +8,9 @@ class WordHashTable
     unsigned            mSize;
     pthread_mutex_t     mutex;
 
-    unsigned hash(const char *c1, const char *c2) const {
+    unsigned hash(const char *c) const {
         unsigned val = 0;
-        while (c1!=c2) val = ((*c1++) + 61 * val);
-        val=val%capacity;
-        return val;
-    }
-
-    unsigned hash(const char *txt32) const {
-        unsigned val = 0;
-        while (*txt32) val = ((*txt32++) + 61 * val);
+        while (*c) val = ((*c++) + 61 * val);
         val=val%capacity;
         return val;
     }
@@ -48,18 +41,13 @@ public:
      * If the word was NOT in the table we allocate space for the word,
      * copy the word and store the address. If the word was already in
      * the table we store nothing.
-     *
-     *  @param c1 The first char of the string to insert.
-     *  @param c2 One char past the last char of the string to insert.
-     *  @param c2 One char past the last char of the string to insert.
-     *  @return true if a new Word was created or false if an equivalent Word already existed
      */
-    bool insert (const char *c1, const char *c2, Word** inserted_word) {
+    bool insert (WordText &wtxt, Word** inserted_word) {
         //~ lock();
-        unsigned index = hash(c1, c2);
-        while (table[index] && !table[index]->equals(c1, c2)) index = (index+1) % capacity;
+        unsigned index = hash(wtxt.chars);
+        while (table[index] && !table[index]->equals(wtxt)) index = (index+1) % capacity;
         if (!table[index]) {
-            table[index] = new Word(c1, c2, index);
+            table[index] = new Word(wtxt, index);
             mSize++;
             *inserted_word = table[index];
             //~ unlock();
@@ -68,32 +56,6 @@ public:
         *inserted_word = table[index];
         //~ unlock();
         return false;
-    }
-
-    bool insert (const char *txt32, Word** inserted_word) {
-        //~ lock();
-        unsigned index = hash(txt32);
-        while (table[index] && !table[index]->equals(txt32)) index = (index+1) % capacity;
-        if (!table[index]) {
-            table[index] = new Word(txt32, index);
-            mSize++;
-            *inserted_word = table[index];
-            //~ unlock();
-            return true;
-        }
-        *inserted_word = table[index];
-        //~ unlock();
-        return false;
-    }
-
-    bool exists (const char *c1, const char *c2, Word** inserted_word) {
-        unsigned index = hash(c1, c2);
-        while (table[index] && !table[index]->equals(c1, c2)) index = (index+1) % capacity;
-        if (!table[index]) {
-            return false;
-        }
-        *inserted_word = table[index];
-        return true;
     }
 
     Word* getWord(unsigned index) const {

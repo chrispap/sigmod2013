@@ -1,9 +1,18 @@
 #ifndef WORD_H
 #define WORD_H
 
+typedef unsigned long wunit;
+
+#define WUNITS_MAX ((MAX_WORD_LENGTH+1)/sizeof(wunit))
+
+union WordText {
+    wunit ints[WUNITS_MAX];
+    char chars[MAX_WORD_LENGTH+1];
+};
+
 struct Word
 {
-    char            txt[MAX_WORD_LENGTH+1];         ///< The actual word :P
+    WordText        txt;                            ///< The actual word :P
     int             length;                         ///< strlen(txt);
     unsigned        letterBits;                     ///< 1 bit for every char [a-z]
 
@@ -11,59 +20,30 @@ struct Word
     unsigned        gwdbIndex;
     int             qwindex[3];                     ///< Index of this word to the query word tables.
     set<QueryID>    querySet;
-    DFALevenstein   *dfa;
 
     /* dword */
     unsigned lastCheck_edit;
     unsigned lastCheck_hamm;
-
     set<unsigned>   editMatches[4];                 ///< Lists of words. One for each edit distance.
     set<unsigned>   hammMatches[4];                 ///< Lists of words. One for each hamming distance.
 
-    /** Store the new word and populate the data structures */
-    Word (const char *c1, const char *c2, unsigned globindex) :
+    Word (WordText &wtxt, unsigned globindex) :
         letterBits(0),
         gwdbIndex(globindex),
-        dfa(NULL),
         lastCheck_edit(0),
         lastCheck_hamm(0)
      {
-        int i=0;
-        while (c1!=c2) {
-            letterBits |= 1 << (*c1-'a');
-            txt[i++] = *c1++;
-        }
-        length = i;
-        while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
+        txt = wtxt;
+        unsigned wi;
+        for (wi=0; txt.chars[wi]; wi++) letterBits |= 1 << (txt.chars[wi]-'a');
+        length = wi;
     }
 
-    Word (const char *txt32, unsigned globindex) :
-        letterBits(0),
-        gwdbIndex(globindex),
-        dfa(NULL),
-        lastCheck_edit(0),
-        lastCheck_hamm(0)
-     {
-        memcpy(txt, txt32, MAX_WORD_LENGTH+1);
-        int i;
-        for (i=0; txt[i]; i++) letterBits |= 1 << (txt[i]-'a');
-        length = i;
-    }
+    bool equals(WordText &wtxt) const {
+        //~ return !strcmp(txt.chars, wtxt.chars);
 
-    bool equals(const char *c1, const char *c2) const {
-        const char *_txt = txt;
-        while (c1!=c2 && *_txt) if (*_txt++ != *c1++) return false;
-        if (c1==c2 && !*_txt) return true;
-        else return false;
-    }
-
-    bool equals(const char *txt32) const {
-        return !memcmp(txt, txt32, MAX_WORD_LENGTH+1);
-        //~ const int *i1= (int*) txt;
-        //~ const int *i2= (int*) txt32;
-        //~ while ( i1!=(int*)(txt+(MAX_WORD_LENGTH+1)) && *i1==*i2) {++i1; ++i2;}
-        //~ if (i1==(int*)(txt+(MAX_WORD_LENGTH+1))) return true;
-        //~ else return false;
+        for (unsigned i=0; i<WUNITS_MAX; i++) if (wtxt.ints[i]!=txt.ints[i]) return false;
+        return true;
     }
 
     int letterDiff(Word *w ) {
@@ -71,9 +51,9 @@ struct Word
     }
 
     int EditDist(Word *w) {
-        char* a = w->txt;
+        char* a = w->txt.chars;
         int na = w->length;
-        char* b = this->txt;
+        char* b = txt.chars;
         int nb = this->length;
 
         int oo=0x7FFFFFFF;
@@ -129,9 +109,9 @@ struct Word
     }
 
     int HammingDist(Word *w) {
-        char* a = w->txt;
+        char* a = w->txt.chars;
         int na = w->length;
-        char* b = this->txt;
+        char* b = txt.chars;
         int nb = this->length;
 
         int j, oo=0x7FFFFFFF;

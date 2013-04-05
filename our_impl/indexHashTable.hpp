@@ -7,22 +7,13 @@ using namespace std;
 
 class IndexHashTable
 {
-    typedef unsigned int unit;
+    typedef unsigned long unit;
 
-    unit*               units;          //TODO: Maybe if it becomes stl::vector it will have better performance ?
-    unsigned            numUnits;
+    unit*               units;
     bool                keepIndexVec;
     unsigned            capacity;
+    unsigned            numUnits;
     unsigned            mSize;
-    pthread_mutex_t     mutex;
-
-    void lock() {
-        pthread_mutex_lock(&mutex);
-    }
-
-    void unlock() {
-        pthread_mutex_unlock(&mutex);
-    }
 
 public:
     vector<unsigned> indexVec;
@@ -32,7 +23,6 @@ public:
         capacity(_capacity),
         mSize(0)
     {
-        pthread_mutex_init(&mutex,   NULL);
         numUnits = capacity/BITS_PER_UNIT;
         if (capacity%BITS_PER_UNIT) numUnits++;     // An to capacity den einai akeraio pollaplasio tou BITS_PER_UNIT, tote theloume allo ena unit.
         units = (unit*) malloc (numUnits*sizeof(unit));     // Allocate space with capacity bits. (NOT BYTES, BITS!)
@@ -41,13 +31,12 @@ public:
     }
 
     IndexHashTable (const IndexHashTable &from) :
-        numUnits(from.numUnits),
         keepIndexVec(from.keepIndexVec),
         capacity(from.capacity),
+        numUnits(from.numUnits),
         mSize(from.mSize),
         indexVec(from.indexVec)
     {
-        pthread_mutex_init(&mutex,   NULL);
         units = (unit*) malloc (numUnits*sizeof(unit));
         if (units==0) {fprintf(stderr, "Could not allocate memory for IndexHashTable"); exit(-1);}
         for (unsigned i=0 ; i<numUnits ; i++) units[i]=from.units[i];
@@ -57,20 +46,17 @@ public:
         free(units);
     }
 
-    bool insert (int index) {
-        //~ lock();
+    bool insert (unsigned index) {
         unsigned unit_offs = index / BITS_PER_UNIT;
         unsigned unit_bit  = index % BITS_PER_UNIT;
-        unit mask = 1 << unit_bit;
+        unit mask = 1L << unit_bit;
         if (units[unit_offs] & mask) {
-            //~ unlock();
             return false;
         }
         else {
             units[unit_offs] |= mask;
             mSize++;
             if (keepIndexVec) indexVec.push_back(index);
-            //~ unlock();
             return true;
         }
     }
@@ -78,7 +64,7 @@ public:
     bool exists (int index) {
         unsigned unit_offs = index / BITS_PER_UNIT;
         unsigned unit_bit  = index % BITS_PER_UNIT;
-        unit mask = 1 << unit_bit;
+        unit mask = 1L << unit_bit;
         if (units[unit_offs] & mask)
             return true;
         else
