@@ -18,8 +18,8 @@
 #include "core.hpp"
 #include "wordHashTable.hpp"
 
-#define HASH_SIZE    (1<<18)
-#define NUM_THREADS  14
+#define HASH_SIZE    (1<<20)
+#define NUM_THREADS  24
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
