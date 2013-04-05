@@ -28,20 +28,18 @@ struct Word
     set<unsigned>   hammMatches[4];                 ///< Lists of words. One for each hamming distance.
 
     Word (WordText &wtxt, unsigned globindex) :
+        txt(wtxt),
         letterBits(0),
         gwdbIndex(globindex),
         lastCheck_edit(0),
         lastCheck_hamm(0)
-     {
-        txt = wtxt;
+    {
         unsigned wi;
         for (wi=0; txt.chars[wi]; wi++) letterBits |= 1 << (txt.chars[wi]-'a');
         length = wi;
     }
 
     bool equals(WordText &wtxt) const {
-        //~ return !strcmp(txt.chars, wtxt.chars);
-
         for (unsigned i=0; i<WUNITS_MAX; i++) if (wtxt.ints[i]!=txt.ints[i]) return false;
         return true;
     }

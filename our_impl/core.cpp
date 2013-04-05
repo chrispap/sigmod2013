@@ -56,7 +56,7 @@ static pthread_cond_t       mPendingDocs_cond;              ///<
 static pthread_mutex_t      mReadyDocs_mutex;               ///<
 static pthread_cond_t       mReadyDocs_cond;                ///<
 static pthread_barrier_t    mBarrier;
-
+static pthread_spinlock_t   mSpinlock;
 
 /* Library Functions */
 ErrorCode InitializeIndex()
@@ -71,6 +71,7 @@ ErrorCode InitializeIndex()
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    pthread_spin_init(&mSpinlock, 0);
 
     mPhase = PH_IDLE;
     mBatchId=0;
@@ -250,24 +251,15 @@ void* Thread(void *param)
         pthread_barrier_wait(&mBarrier);
 
         /* MATCHING PHASE */
+        if (myThreadId==0) {
+            for (Document &doc : mParsedDocs)
+                for (unsigned index : doc.words->indexVec)
+                    mBatchWords.insert(index);
+        }
+        pthread_barrier_wait(&mBarrier);
 
 
         /** [01.]
-         *  Construct the DFAs of new arrivals of edit qwords.
-         */
-        //~ for (unsigned index = myThreadId+mQWLastEdit ; index < mQW[MT_EDIT_DIST].size() ; index += NUM_THREADS) {
-            //~ Word *qw = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[index]);
-            //~ if (qw->dfa==NULL) qw->dfa = new DFALevenstein(qw->txt, 3);
-        //~ }
-        //~ pthread_barrier_wait(&mBarrier);
-
-        if (myThreadId==0) {
-            mQWLastEdit = mQW[MT_EDIT_DIST].size();
-            mQWLastHamm = mQW[MT_HAMMING_DIST].size();
-        }
-
-
-        /** [02.]
          * For every dword of this batch, update her matching lists.
          */
         for (unsigned index = myThreadId ; index < mBatchWords.size() ; index += NUM_THREADS) {
@@ -305,7 +297,7 @@ void* Thread(void *param)
         pthread_barrier_wait(&mBarrier);
 
 
-        /** [03.]
+        /** [02.]
          * Determine the matches and deliver docs
          */
         char* qwE = (char*) malloc(mQW[MT_EDIT_DIST].size());
@@ -390,13 +382,14 @@ void ParseDoc(Document &doc, const long thread_id)
 
         GWDB.insert(wtxt, &nw);
 
-        if (doc.words->insert(nw->gwdbIndex)) {
-            pthread_mutex_lock(&mParsedDocs_mutex);
-            mBatchWords.insert(nw->gwdbIndex);
-            pthread_mutex_unlock(&mParsedDocs_mutex);
-        }
+        //~ if (
+        doc.words->insert(nw->gwdbIndex);
+        //~ ) {
+            //~ pthread_mutex_lock(&mParsedDocs_mutex);
+            //~ mBatchWords.insert(nw->gwdbIndex);
+            //~ pthread_mutex_unlock(&mParsedDocs_mutex);
+        //~ }
 
     } while (*c2);
 
 }
-
