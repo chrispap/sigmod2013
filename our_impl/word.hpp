@@ -21,16 +21,33 @@ struct Word
     set<unsigned>   hammMatches[4];                 ///< Lists of words. One for each hamming distance.
 
     /** Store the new word and populate the data structures */
-    Word (const char *c1, const char *c2, unsigned globindex) {
-        gwdbIndex=globindex;
-        lastCheck_edit=0;
-        lastCheck_hamm=0;
-        letterBits = 0;
-        dfa = NULL;
+    Word (const char *c1, const char *c2, unsigned globindex) :
+        letterBits(0),
+        gwdbIndex(globindex),
+        dfa(NULL),
+        lastCheck_edit(0),
+        lastCheck_hamm(0)
+     {
         int i=0;
         while (c1!=c2) {
             letterBits |= 1 << (*c1-'a');
             txt[i++] = *c1++;
+        }
+        length = i;
+        while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
+    }
+
+    Word (const char *txt32, unsigned globindex) :
+        letterBits(0),
+        gwdbIndex(globindex),
+        dfa(NULL),
+        lastCheck_edit(0),
+        lastCheck_hamm(0)
+     {
+        int i=0;
+        while (*txt32) {
+            letterBits |= 1 << (*txt32-'a');
+            txt[i++] = *txt32++;
         }
         length = i;
         while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
@@ -43,12 +60,11 @@ struct Word
         else return false;
     }
 
-    bool equals(Word* w) const {
-        if (this==w) return true;
+    bool equals(const char *txt32) const {
         const int *i1= (int*) txt;
-        const int *i2= (int*) w->txt;
+        const int *i2= (int*) txt32;
         while ( i1!=(int*)(txt+(MAX_WORD_LENGTH+1)) && *i1==*i2) {++i1; ++i2;}
-        if (i1!=(int*)(txt+(MAX_WORD_LENGTH+1))) return true;
+        if (i1==(int*)(txt+(MAX_WORD_LENGTH+1))) return true;
         else return false;
     }
 
@@ -124,7 +140,10 @@ struct Word
         if(na!=nb) return oo;
 
         unsigned int num_mismatches=0;
-        for(j=0;j<na;j++) if(a[j]!=b[j]) num_mismatches++;
+        for(j=0;j<na;j++) {
+            if(a[j]!=b[j]) num_mismatches++;
+            if (num_mismatches>3) break;
+        }
 
         return num_mismatches;
     }

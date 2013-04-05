@@ -19,7 +19,7 @@
 #include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<20)
-#define NUM_THREADS  24
+#define NUM_THREADS  1
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -104,8 +104,10 @@ ErrorCode DestroyIndex()
 
 ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_type, unsigned int match_dist)
 {
-    const char *c1, *c2;
-    int num_words=0;
+    int txt_arr[(MAX_WORD_LENGTH+1)/sizeof(int)+1];
+    char *txt = (char*) ( ((unsigned)(&txt_arr))  &  (~0x03));
+    const char *c2;
+    int num_words=0, i;
     Word* nw;
 
     if (mActiveQueries.size() < query_id+1)
@@ -113,17 +115,27 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 
     c2 = query_str;
     while(*c2==' ') ++c2;                                       // Skip any spaces
-    for (c1=c2;*c2;c1=c2+1) {                                   // For each query word
-        do {++c2;} while (*c2!=' ' && *c2 );                    // Find end of string
 
-        GWDB.insert(c1, c2, &nw);                               // Store the word in the GWDB
+    --c2;
+    do {                               // For each query word
+        i=0;
+        do {
+            txt[i++] = *++c2;
+
+        } while (*c2!=' ' && *c2 );                             // Find end of string
+        --i;
+        while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
+
+
+        //~ GWDB.insert(c1, c2, &nw);                               // Store the word in the GWDB
+        GWDB.insert(txt, &nw);                               // Store the word in the GWDB
         mActiveQueries[query_id].words[num_words] = nw;         // Add the word to the query
         nw->querySet.insert(query_id);
         if (mQW[match_type].insert(nw->gwdbIndex))
             nw->qwindex[match_type] = mQW[match_type].size()-1; // The index of that word to the table of that specific match-type words.
 
         num_words++;
-    }
+    } while (*c2);
 
     mActiveQueries[query_id].type = match_type;
     mActiveQueries[query_id].dist = match_dist;

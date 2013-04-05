@@ -15,10 +15,9 @@ class WordHashTable
         return val;
     }
 
-    unsigned hash(const Word* w) const {
-        const char *c = w->txt;
+    unsigned hash(const char *txt32) const {
         unsigned val = 0;
-        while (*c) val = ((*c++) + 61 * val);
+        while (*txt32) val = ((*txt32++) + 61 * val);
         val=val%capacity;
         return val;
     }
@@ -70,6 +69,25 @@ public:
         //~ unlock();
         return false;
     }
+
+
+    bool insert (const char *txt32, Word** inserted_word) {
+        //~ lock();
+        unsigned index = hash(txt32);
+        while (table[index] && !table[index]->equals(txt32)) index = (index+1) % capacity;
+        if (!table[index]) {
+            table[index] = new Word(txt32, index);
+            mSize++;
+            *inserted_word = table[index];
+            //~ unlock();
+            return true;
+        }
+        *inserted_word = table[index];
+        //~ unlock();
+        return false;
+    }
+
+
 
     bool exists (const char *c1, const char *c2, Word** inserted_word) {
         unsigned index = hash(c1, c2);
