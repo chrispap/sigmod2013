@@ -19,7 +19,7 @@
 #include "wordHashTable.hpp"
 
 #define HASH_SIZE    (1<<20)
-#define NUM_THREADS  1
+#define NUM_THREADS  24
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
@@ -104,8 +104,8 @@ ErrorCode DestroyIndex()
 
 ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_type, unsigned int match_dist)
 {
-    int txt_arr[(MAX_WORD_LENGTH+1)/sizeof(int)+1];
-    char *txt = (char*) ( ((unsigned)(&txt_arr))  &  (~0x03));
+    int txt_arr[(MAX_WORD_LENGTH+1)/sizeof(int)];
+    char *txt = (char*) &txt_arr;
     const char *c2;
     int num_words=0, i;
     Word* nw;
@@ -113,22 +113,13 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
     if (mActiveQueries.size() < query_id+1)
         mActiveQueries.resize(query_id+1);
 
-    c2 = query_str;
-    while(*c2==' ') ++c2;                                       // Skip any spaces
+    c2 = query_str-1;
+    do {
+        memset(txt_arr, 0, sizeof(txt_arr));
+        i=0; do {txt[i++] = *++c2;} while (*c2!=' ' && *c2 );
+        i--; while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
 
-    --c2;
-    do {                               // For each query word
-        i=0;
-        do {
-            txt[i++] = *++c2;
-
-        } while (*c2!=' ' && *c2 );                             // Find end of string
-        --i;
-        while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
-
-
-        //~ GWDB.insert(c1, c2, &nw);                               // Store the word in the GWDB
-        GWDB.insert(txt, &nw);                               // Store the word in the GWDB
+        GWDB.insert(txt, &nw);                                  // Store the word in the GWDB
         mActiveQueries[query_id].words[num_words] = nw;         // Add the word to the query
         nw->querySet.insert(query_id);
         if (mQW[match_type].insert(nw->gwdbIndex))
@@ -390,20 +381,25 @@ void* Thread(void *param)
 
 void ParseDoc(Document &doc, const long thread_id)
 {
-    const char *c1, *c2 = doc.str;
+    int txt_arr[(MAX_WORD_LENGTH+1)];
+    char *txt = (char*) &txt_arr;
+    const char *c2;
+    int i;
     Word* nw;
-    while(*c2==' ') ++c2;
 
-    for (c1=c2;*c2;c1=c2+1) {
-        do {++c2;} while (*c2!=' ' && *c2 );
+    c2 = doc.str-1;
+    do {
+        memset (txt_arr, 0, sizeof(txt_arr));
+        i=0; do {txt[i++] = *++c2;} while (*c2!=' ' && *c2 );
+        i--; while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
 
-        GWDB.insert(c1, c2, &nw);
+        GWDB.insert(txt, &nw);
 
         if (doc.words->insert(nw->gwdbIndex)) {
             pthread_mutex_lock(&mParsedDocs_mutex);
             mBatchWords.insert(nw->gwdbIndex);
             pthread_mutex_unlock(&mParsedDocs_mutex);
         }
-    }
+    } while (*c2);
 }
 

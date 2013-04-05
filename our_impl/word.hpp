@@ -44,13 +44,10 @@ struct Word
         lastCheck_edit(0),
         lastCheck_hamm(0)
      {
-        int i=0;
-        while (*txt32) {
-            letterBits |= 1 << (*txt32-'a');
-            txt[i++] = *txt32++;
-        }
+        memcpy(txt, txt32, MAX_WORD_LENGTH+1);
+        int i;
+        for (i=0; txt[i]; i++) letterBits |= 1 << (txt[i]-'a');
         length = i;
-        while (i<MAX_WORD_LENGTH+1) txt[i++] = 0;
     }
 
     bool equals(const char *c1, const char *c2) const {
@@ -61,11 +58,12 @@ struct Word
     }
 
     bool equals(const char *txt32) const {
-        const int *i1= (int*) txt;
-        const int *i2= (int*) txt32;
-        while ( i1!=(int*)(txt+(MAX_WORD_LENGTH+1)) && *i1==*i2) {++i1; ++i2;}
-        if (i1==(int*)(txt+(MAX_WORD_LENGTH+1))) return true;
-        else return false;
+        return !memcmp(txt, txt32, MAX_WORD_LENGTH+1);
+        //~ const int *i1= (int*) txt;
+        //~ const int *i2= (int*) txt32;
+        //~ while ( i1!=(int*)(txt+(MAX_WORD_LENGTH+1)) && *i1==*i2) {++i1; ++i2;}
+        //~ if (i1==(int*)(txt+(MAX_WORD_LENGTH+1))) return true;
+        //~ else return false;
     }
 
     int letterDiff(Word *w ) {

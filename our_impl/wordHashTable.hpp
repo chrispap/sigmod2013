@@ -70,7 +70,6 @@ public:
         return false;
     }
 
-
     bool insert (const char *txt32, Word** inserted_word) {
         //~ lock();
         unsigned index = hash(txt32);
@@ -86,8 +85,6 @@ public:
         //~ unlock();
         return false;
     }
-
-
 
     bool exists (const char *c1, const char *c2, Word** inserted_word) {
         unsigned index = hash(c1, c2);
