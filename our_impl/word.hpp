@@ -19,7 +19,7 @@ struct Word
     /* qword */
     unsigned        gwdbIndex;
     int             qwindex[3];                     ///< Index of this word to the query word tables.
-    set<QueryID>    querySet;
+    set<QueryID>    querySet[3];
 
     /* dword */
     unsigned lastCheck_edit;
