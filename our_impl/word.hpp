@@ -24,8 +24,8 @@ struct Word
     /* dword */
     unsigned lastCheck_edit;
     unsigned lastCheck_hamm;
-    set<unsigned>   editMatches[4];                 ///< Lists of words. One for each edit distance.
-    set<unsigned>   hammMatches[4];                 ///< Lists of words. One for each hamming distance.
+    vector<unsigned>   editMatches[4];                ///< Lists of words. One for each edit distance.
+    vector<unsigned>   hammMatches[4];                ///< Lists of words. One for each hamming distance.
 
     Word (WordText &wtxt, unsigned globindex) :
         txt(wtxt),

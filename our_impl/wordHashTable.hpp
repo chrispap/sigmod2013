@@ -8,8 +8,9 @@ class WordHashTable
     unsigned            mSize;
     pthread_mutex_t     mutex;
 
-    unsigned hash(const char *c) const {
+    unsigned hash(WordText &wtxt) const {
         unsigned val = 0;
+        char *c = wtxt.chars;
         while (*c) val = ((*c++) + 61 * val);
         val=val%capacity;
         return val;
@@ -43,18 +44,18 @@ public:
      * the table we store nothing.
      */
     bool insert (WordText &wtxt, Word** inserted_word) {
-        //~ lock();
-        unsigned index = hash(wtxt.chars);
+        lock();
+        unsigned index = hash(wtxt);
         while (table[index] && !table[index]->equals(wtxt)) index = (index+1) % capacity;
         if (!table[index]) {
             table[index] = new Word(wtxt, index);
             mSize++;
             *inserted_word = table[index];
-            //~ unlock();
+            unlock();
             return true;
         }
         *inserted_word = table[index];
-        //~ unlock();
+        unlock();
         return false;
     }
 
