@@ -176,7 +176,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     *p_doc_id = res.id;
     *p_num_res = res.matchingQueries->size();
 
-    if(*p_num_res) {
+    if (*p_num_res) {
         QueryID *mq = (QueryID*) malloc (*p_num_res * sizeof(QueryID));
         auto qi = res.matchingQueries->begin();
         for(unsigned i=0; i!=*p_num_res ; i++) mq[i] = *qi++;
@@ -186,6 +186,7 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 
     delete res.matchingQueries;
     delete res.words;
+    free(res.str);
 
     //~ fprintf(stderr, "Doc %-4u delivered \n", res.id);fflush(NULL);
     pthread_cond_broadcast(&mReadyDocs_cond);
@@ -211,6 +212,7 @@ void* Thread(void *param)
 
     while (1)
     {
+        pthread_barrier_wait(&mBarrier);
         /* PHASE 01 */
         while (1)
         {
@@ -232,23 +234,29 @@ void* Thread(void *param)
 
             /* Parse the document and append it to mParsedDocs */
             ParseDoc(doc, myThreadId);
-            free(doc.str);
+
             pthread_mutex_lock(&mParsedDocs_mutex);
             mParsedDocs.push_back(doc);
             pthread_mutex_unlock(&mParsedDocs_mutex);
         }
 
+
         /* FINISH DETECTED */
         if (mPhase == PH_FINISHED) break;
 
-        pthread_barrier_wait(&mBarrier);
 
         /* MATCHING PHASE */
         /** [00.]
          * Create batchWords
          */
+        pthread_barrier_wait(&mBarrier);
         if (myThreadId==0)
         {
+            pthread_mutex_lock(&mPendingDocs_mutex);
+            if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
+            pthread_cond_broadcast(&mPendingDocs_cond);
+            pthread_mutex_unlock(&mPendingDocs_mutex);
+
             for (Document &doc : mParsedDocs)
                 for (unsigned index : doc.words->indexVec)
                     mBatchWords.insert(index);
@@ -281,15 +289,6 @@ void* Thread(void *param)
             dw->lastCheck_hamm = mQW[MT_HAMMING_DIST].size();
 
         }
-
-
-        /** Proceed to PH_IDLE */
-        if (myThreadId==0) {
-            pthread_mutex_lock(&mPendingDocs_mutex);
-            if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
-            pthread_cond_broadcast(&mPendingDocs_cond);
-            pthread_mutex_unlock(&mPendingDocs_mutex);
-        }
         pthread_barrier_wait(&mBarrier);
 
 
@@ -315,26 +314,26 @@ void* Thread(void *param)
             }
 
             for (unsigned qid=0 ; qid<mActiveQueries.size() ; qid++) {
-                Query &q = mActiveQueries[qid];
-                if (q.numWords==0) continue;
+                Query &Q = mActiveQueries[qid];
+                if (Q.numWords==0) continue;
 
                 int qwc=0;
 
-                if (q.type==MT_EXACT_MATCH)
+                if (Q.type==MT_EXACT_MATCH)
                 {
-                    for (int qwi=0 ; qwi<q.numWords ; qwi++)
-                        if (doc.words->exists(q.words[qwi]->gwdbIndex)) ++qwc;
+                    for (int qwi=0 ; qwi<Q.numWords ; qwi++)
+                        if (doc.words->exists(Q.words[qwi]->gwdbIndex)) ++qwc;
                         else break;
                 }
                 else
                 {
-                    char *qwVec = q.type==MT_EDIT_DIST ? qwE : qwH;
-                    for (int qwi=0 ; qwi<q.numWords ; qwi++)
-                        if ( qwVec[q.words[qwi]->qwindex[q.type]] <= q.dist) ++qwc;
+                    char *qwVec = Q.type==MT_EDIT_DIST ? qwE : qwH;
+                    for (int qwi=0 ; qwi<Q.numWords ; qwi++)
+                        if ( qwVec[Q.words[qwi]->qwindex[Q.type]] <= Q.dist) ++qwc;
                         else break;
                 }
 
-                if (qwc == q.numWords) doc.matchingQueries->push_back(qid);
+                if (qwc == Q.numWords) doc.matchingQueries->push_back(qid);
             }
 
             pthread_mutex_lock(&mReadyDocs_mutex);
@@ -342,6 +341,7 @@ void* Thread(void *param)
             pthread_cond_broadcast(&mReadyDocs_cond);
             pthread_mutex_unlock(&mReadyDocs_mutex);
         }
+
         free(qwE);
         free(qwH);
         pthread_barrier_wait(&mBarrier);
@@ -357,7 +357,7 @@ void* Thread(void *param)
             mBatchWords.clear();
             mBatchId++;
         }
-        pthread_barrier_wait(&mBarrier);
+        //~ pthread_barrier_wait(&mBarrier);
 
     }
 

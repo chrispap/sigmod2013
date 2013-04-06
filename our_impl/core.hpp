@@ -3,12 +3,10 @@
 
 struct Query
 {
-    MatchType       type;
-    char            dist;
     char            numWords;
     Word*           words[MAX_QUERY_WORDS];
-
-    Query() : dist(0), numWords(0) {}
+    MatchType       type;
+    char            dist;
 };
 
 struct Document
