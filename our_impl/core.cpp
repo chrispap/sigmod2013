@@ -116,7 +116,7 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 
         GWDB.insert(wtxt, &nw);
         mActiveQueries[query_id].words[num_words] = nw;
-        if (mQW[match_type].insert(nw->gwdbIndex))
+        if (match_type!=MT_EXACT_MATCH && mQW[match_type].insert(nw->gwdbIndex))
             nw->qwindex[match_type] = mQW[match_type].size()-1;     // The index of that word to the table of that specific match-type words.
 
         num_words++;
@@ -244,19 +244,20 @@ void* Thread(void *param)
         pthread_barrier_wait(&mBarrier);
 
         /* MATCHING PHASE */
-
         /** [00.]
          * Create batchWords
          */
-        if (myThreadId==0) {
+        if (myThreadId==0)
+        {
             for (Document &doc : mParsedDocs)
                 for (unsigned index : doc.words->indexVec)
                     mBatchWords.insert(index);
         }
         pthread_barrier_wait(&mBarrier);
 
+
         /** [01.]
-         * For every dword of this batch, update her matching lists.
+         * For every dword of this batch, update its matching lists.
          */
         for (unsigned index = myThreadId ; index < mBatchWords.size() ; index += NUM_THREADS) {
             Word *dw = GWDB.getWord(mBatchWords.indexVec[index]);
@@ -280,7 +281,6 @@ void* Thread(void *param)
             dw->lastCheck_hamm = mQW[MT_HAMMING_DIST].size();
 
         }
-        //~mar pthread_barrier_wait(&mBarrier);
 
 
         /** Proceed to PH_IDLE */
