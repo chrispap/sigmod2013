@@ -114,10 +114,10 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
         i=0; do {wtxt.chars[i++] = *++c2;} while (*c2!=' ' && *c2 );
         i--; while (i<MAX_WORD_LENGTH+1) wtxt.chars[i++] = 0;
 
-        GWDB.insert(wtxt, &nw);                                  // Store the word in the GWDB
-        mActiveQueries[query_id].words[num_words] = nw;         // Add the word to the query
+        GWDB.insert(wtxt, &nw);
+        mActiveQueries[query_id].words[num_words] = nw;
         if (mQW[match_type].insert(nw->gwdbIndex))
-            nw->qwindex[match_type] = mQW[match_type].size()-1; // The index of that word to the table of that specific match-type words.
+            nw->qwindex[match_type] = mQW[match_type].size()-1;     // The index of that word to the table of that specific match-type words.
 
         num_words++;
     } while (*c2);
@@ -132,7 +132,6 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 ErrorCode EndQuery(QueryID query_id)
 {
     mActiveQueries[query_id].numWords=0;
-
     return EC_SUCCESS;
 }
 
@@ -246,6 +245,16 @@ void* Thread(void *param)
 
         /* MATCHING PHASE */
 
+        /** [00.]
+         * Create batchWords
+         */
+        if (myThreadId==0) {
+            for (Document &doc : mParsedDocs)
+                for (unsigned index : doc.words->indexVec)
+                    mBatchWords.insert(index);
+        }
+        pthread_barrier_wait(&mBarrier);
+
         /** [01.]
          * For every dword of this batch, update her matching lists.
          */
@@ -271,7 +280,7 @@ void* Thread(void *param)
             dw->lastCheck_hamm = mQW[MT_HAMMING_DIST].size();
 
         }
-        pthread_barrier_wait(&mBarrier);
+        //~mar pthread_barrier_wait(&mBarrier);
 
 
         /** Proceed to PH_IDLE */
@@ -333,6 +342,8 @@ void* Thread(void *param)
             pthread_cond_broadcast(&mReadyDocs_cond);
             pthread_mutex_unlock(&mReadyDocs_mutex);
         }
+        free(qwE);
+        free(qwH);
         pthread_barrier_wait(&mBarrier);
 
 
@@ -368,12 +379,7 @@ void ParseDoc(Document &doc, const long thread_id)
         i--; while (i<MAX_WORD_LENGTH+1) wtxt.chars[i++] = 0;
 
         GWDB.insert(wtxt, &nw);
-
-        if (doc.words->insert(nw->gwdbIndex)) {
-            pthread_mutex_lock(&mParsedDocs_mutex);
-            mBatchWords.insert(nw->gwdbIndex);
-            pthread_mutex_unlock(&mParsedDocs_mutex);
-        }
+        doc.words->insert(nw->gwdbIndex);
 
     } while (*c2);
 

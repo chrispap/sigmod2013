@@ -44,18 +44,18 @@ public:
      * the table we store nothing.
      */
     bool insert (WordText &wtxt, Word** inserted_word) {
-        lock();
+        //~ lock();
         unsigned index = hash(wtxt);
         while (table[index] && !table[index]->equals(wtxt)) index = (index+1) % capacity;
         if (!table[index]) {
             table[index] = new Word(wtxt, index);
             mSize++;
             *inserted_word = table[index];
-            unlock();
+            //~ unlock();
             return true;
         }
         *inserted_word = table[index];
-        unlock();
+        //~ unlock();
         return false;
     }
 

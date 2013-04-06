@@ -12,26 +12,27 @@ union WordText {
 
 struct Word
 {
-    WordText        txt;                            ///< The actual word :P
-    int             length;                         ///< strlen(txt);
-    unsigned        letterBits;                     ///< 1 bit for every char [a-z]
+    /* dword */
+    unsigned lastCheck_edit;
+    unsigned lastCheck_hamm;
+    vector<unsigned>   editMatches[4];              ///< Lists of words. One for each edit distance.
+    vector<unsigned>   hammMatches[4];              ///< Lists of words. One for each hamming distance.
 
     /* qword */
     unsigned        gwdbIndex;
     int             qwindex[3];                     ///< Index of this word to the query word tables.
 
-    /* dword */
-    unsigned lastCheck_edit;
-    unsigned lastCheck_hamm;
-    vector<unsigned>   editMatches[4];                ///< Lists of words. One for each edit distance.
-    vector<unsigned>   hammMatches[4];                ///< Lists of words. One for each hamming distance.
+    /* general */
+    int             length;                         ///< strlen(txt);
+    unsigned        letterBits;                     ///< 1 bit for every char [a-z]
+    WordText        txt;                            ///< The actual word :P
 
     Word (WordText &wtxt, unsigned globindex) :
-        txt(wtxt),
-        letterBits(0),
-        gwdbIndex(globindex),
         lastCheck_edit(0),
-        lastCheck_hamm(0)
+        lastCheck_hamm(0),
+        gwdbIndex(globindex),
+        letterBits(0),
+        txt(wtxt)
     {
         unsigned wi;
         for (wi=0; txt.chars[wi]; wi++) letterBits |= 1 << (txt.chars[wi]-'a');

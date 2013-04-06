@@ -8,20 +8,21 @@ using namespace std;
 class IndexHashTable
 {
     typedef unsigned long unit;
-
-    unit*               units;
-    bool                keepIndexVec;
-    unsigned            capacity;
-    unsigned            numUnits;
-    unsigned            mSize;
-
 public:
     vector<unsigned> indexVec;
 
+private:
+    unit*               units;
+    unsigned            mSize;
+    bool                keepIndexVec;
+    unsigned            capacity;
+    unsigned            numUnits;
+
+public:
     IndexHashTable (unsigned _capacity, bool _keepIndexVec=true) :
+        mSize(0),
         keepIndexVec(_keepIndexVec),
-        capacity(_capacity),
-        mSize(0)
+        capacity(_capacity)
     {
         numUnits = capacity/BITS_PER_UNIT;
         if (capacity%BITS_PER_UNIT) numUnits++;     // An to capacity den einai akeraio pollaplasio tou BITS_PER_UNIT, tote theloume allo ena unit.
@@ -31,11 +32,11 @@ public:
     }
 
     IndexHashTable (const IndexHashTable &from) :
+        indexVec(from.indexVec),
+        mSize(from.mSize),
         keepIndexVec(from.keepIndexVec),
         capacity(from.capacity),
-        numUnits(from.numUnits),
-        mSize(from.mSize),
-        indexVec(from.indexVec)
+        numUnits(from.numUnits)
     {
         units = (unit*) malloc (numUnits*sizeof(unit));
         if (units==0) {fprintf(stderr, "Could not allocate memory for IndexHashTable"); exit(-1);}
