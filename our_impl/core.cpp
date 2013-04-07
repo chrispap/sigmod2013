@@ -13,8 +13,9 @@
 using namespace std;
 
 #include <core.h>
-#include "word.hpp"
 #include "indexHashTable.hpp"
+#include "automata.hpp"
+#include "word.hpp"
 #include "wordHashTable.hpp"
 #include "core.hpp"
 

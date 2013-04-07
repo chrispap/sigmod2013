@@ -284,12 +284,12 @@ class DFATrie : public NFA
 public:
     bool insertWord (const Word* word) {
         StateIndex cur=0;
-        for (int i=0 ; word->txt[i] ; i++) {
-            if (states[cur][word->txt[i]] == NO_TRANS) {
-                states[cur].setLetterTransition(word->txt[i], states.size());
+        for (int i=0 ; word->txt.chars[i] ; i++) {
+            if (states[cur][word->txt.chars[i]] == NO_TRANS) {
+                states[cur].setLetterTransition(word->txt.chars[i], states.size());
                 states.emplace_back();
             }
-            cur = states[cur][word->txt[i]];
+            cur = states[cur][word->txt.chars[i]];
         }
         if (states[cur].getWord()==NULL) {
             states[cur].setWord( (void*) word);
@@ -313,9 +313,8 @@ public:
         num_final_states=0;
     }
 
-    void dfaIntersect (Word *word) {
+    void dfaIntersect (DFALevenstein &autom) {
         DFATrie &trie = *this;
-        DFALevenstein &autom = word->dfa != NULL ? *word->dfa : *(word->dfa=new DFALevenstein(word->txt, 3));
 
         unsigned sp = 0;    // StackPointer
         vector<StatePair> stack;
