@@ -21,7 +21,7 @@ public:
 
     }
 
-    /* Set transitions */
+    /** Set transition */
     void setLetterTransition (const char t, StateIndex index) {
         trans_letter[t-'a'] = index;
     }
@@ -30,7 +30,7 @@ public:
         ptr = _ptr;
     }
 
-    /* Get transitions */
+    /** Get transition */
     StateIndex operator[] (const char t) const {
         return trans_letter[t-'a'];
     }
@@ -55,15 +55,11 @@ public:
         states.emplace_back();
     }
 
-    StateIndex getInitState() const {
-        return 0;
-    }
-
     unsigned stateCount () const {
         return states.size();
     }
 
-    unsigned finalStatesCount() const {
+    unsigned finalStateCount() const {
         return num_final_states;
     }
 
@@ -74,7 +70,6 @@ public:
 protected:
     vector<State> states;
     unsigned num_final_states;
-
 };
 
 #include "word.hpp"
@@ -100,7 +95,7 @@ public:
     }
 
     unsigned size () const {
-        return finalStatesCount();
+        return finalStateCount();
     }
 
     void clear() {

@@ -203,7 +203,7 @@ void printStats()
     fprintf(stdout, "\n=== STATS ================================== BATCH =============================================================================\n");
     fprintf(stdout, "GWDB     Exact   Hamming   Edit    Approx   |  BatchID   ActiveQueries   batchDocs   batchWords   \n");
     fprintf(stdout, "%-6u   %-5u   %-7u   %-5u   %-6u   |  %-7d   %-13lu   %-9lu   %-10u   \n",
-                     GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mQWTrie.size(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size(), mBatchWords.size());
+                     GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mQWTrie.stateCount(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size(), mBatchWords.size());
     fprintf(stdout, "================================================================================================================================\n");
     fflush(NULL);
 }
