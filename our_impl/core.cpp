@@ -14,7 +14,7 @@ using namespace std;
 
 #include <core.h>
 #include "indexHashTable.hpp"
-#include "automata.hpp"
+#include "dfatrie.hpp"
 #include "word.hpp"
 #include "wordHashTable.hpp"
 #include "core.hpp"
@@ -37,6 +37,7 @@ static IndexHashTable       mQW[3] = {
                              IndexHashTable(HASH_SIZE, 0),  ///< Unique indices of words of EXACT_MATCH Queries
                              IndexHashTable(HASH_SIZE, 1),  ///< Unique indices of words of HAMM_MATCH Queries
                              IndexHashTable(HASH_SIZE, 1)}; ///< Unique indices of words of EDIT_MATCH Queries
+static DFATrie              mQWTrie;
 
 /* Documents */
 static queue<Document>      mPendingDocs;                   ///< Documents that haven't yet been touched at all.
@@ -117,9 +118,10 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 
         GWDB.insert(wtxt, &nw);
         mActiveQueries[query_id].words[num_words] = nw;
-        if (match_type!=MT_EXACT_MATCH && mQW[match_type].insert(nw->gwdbIndex))
+        if (match_type!=MT_EXACT_MATCH && mQW[match_type].insert(nw->gwdbIndex)) {
             nw->qwindex[match_type] = mQW[match_type].size()-1;     // The index of that word to the table of that specific match-type words.
-
+            mQWTrie.insertWord(nw);
+        }
         num_words++;
     } while (*c2);
 
@@ -199,9 +201,9 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 void printStats()
 {
     fprintf(stdout, "\n=== STATS ================================== BATCH =============================================================================\n");
-    fprintf(stdout, "GWDB     Exact   Hamming   Edit   |  BatchID   ActiveQueries   batchDocs   batchWords   newDWords   \n");
-    fprintf(stdout, "%-6u   %-5u   %-7u   %-4u   |  %-7d   %-13lu   %-9lu   \n",
-                     GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size() );
+    fprintf(stdout, "GWDB     Exact   Hamming   Edit    Approx   |  BatchID   ActiveQueries   batchDocs   batchWords   \n");
+    fprintf(stdout, "%-6u   %-5u   %-7u   %-5u   %-6u   |  %-7d   %-13lu   %-9lu   %-10u   \n",
+                     GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mQWTrie.size(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size(), mBatchWords.size());
     fprintf(stdout, "================================================================================================================================\n");
     fflush(NULL);
 }
