@@ -12,25 +12,25 @@ union WordText {
 
 struct Word
 {
+    int                 length;
+    unsigned            letterBits;
+
     unsigned            lastCheck_edit;
     unsigned            lastCheck_hamm;
 
-    unsigned            gwdbIndex;
     int                 qwindex[3];
+    unsigned            gwdbIndex;
 
-    int                 length;
-    unsigned            letterBits;
     WordText            txt;
 
     vector<unsigned>    editMatches[4];
     vector<unsigned>    hammMatches[4];
 
-
     Word (WordText &wtxt, unsigned globindex) :
+        letterBits(0),
         lastCheck_edit(0),
         lastCheck_hamm(0),
         gwdbIndex(globindex),
-        letterBits(0),
         txt(wtxt)
     {
         unsigned wi;
@@ -39,6 +39,7 @@ struct Word
     }
 
     bool equals(WordText &wtxt) const {
+        //~ return !strcmp(txt.chars, wtxt.chars);
         for (unsigned i=0; i<WUNITS_MAX; i++) if (wtxt.ints[i]!=txt.ints[i]) return false;
         return true;
     }

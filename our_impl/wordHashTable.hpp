@@ -60,8 +60,10 @@ public:
     }
 
     Word* getWord(unsigned index) const {
-        if (index>=capacity) return NULL;
-        else return table[index];
+        //~ if (index>=capacity)
+            //~ return NULL;
+        //~ else
+            return table[index];
     }
 
     unsigned size() const { return mSize; }

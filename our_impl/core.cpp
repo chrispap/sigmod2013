@@ -29,7 +29,7 @@ static void  printStats ();
 static void* Thread (void *param);
 static void  ParseDoc (Document &doc, const long thread_id);
 static int EditDist(char *ds, int dn, char *qs, int qn, int qi);
-static int HammingDist(char *a, int na, char *b, int nb);
+static int HammingDist(WordText *dtxt, WordText *qtxt);
 
 /* Globals */
 static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to  EVERY  single word encountered.
@@ -294,13 +294,12 @@ void* Thread(void *param)
             Word *wd = GWDB.getWord(mBatchWords.indexVec[index]);
             if (wd->lastCheck_edit >= mQWVec[MT_EDIT_DIST].size() && wd->lastCheck_hamm >= mQWVec[MT_HAMMING_DIST].size() ) continue;
 
-
+            int seri=0;
+            WordText dtxt = wd->txt;
             unsigned last_check_edit = wd->lastCheck_edit;
             unsigned last_check_hamm = wd->lastCheck_hamm;
             int dn = wd->length;
             unsigned letter_bits = wd->letterBits;
-            int seri=0;
-            WordText dtxt = wd->txt;
 
             for (unsigned j=last_check_edit ; j<mQW[MT_EDIT_DIST].size() ; j++) {
                 QWord &qw = mQWVec[MT_EDIT_DIST][j];
@@ -318,7 +317,7 @@ void* Thread(void *param)
                 QWord &qw = mQWVec[MT_HAMMING_DIST][j];
 
                 if (qw.length == dn && Word::letterDiff(letter_bits, qw.letterBits)<=6) {
-                    int dist = HammingDist(dtxt.chars, dn, qw.txt.chars, qw.length);
+                    int dist = HammingDist(&dtxt, &qw.txt);
                     if (dist<=3) wd->hammMatches[dist].push_back(j);
                 }
             }
@@ -423,27 +422,22 @@ void ParseDoc(Document &doc, const long thread_id)
 int EditDist(char *ds, int dn, char *qs, int qn, int qi)
 {
     static __thread long T[32][MAX_WORD_LENGTH+1];
-    int di, ret;
+    int di, ret=0x7F;
 
     if (!qi) for(di=0;di<=dn;di++) T[0][di]=di;
 
     for(qi++;qi<=qn;qi++)
     {
         T[qi][0]=qi;
-        //~ for(di=1;di<=dn;di++)
-            //~ T[qi][di]=0x7FFFFFFF;
 
         for(di=1;di<=dn;di++)
         {
             T[qi][di]=0x7FFFFFFF;
-
             ret =    T [qi-1] [di]  +1;
             int d2 = T [qi]   [di-1] +1;
             int d3 = T [qi-1] [di-1]; if(qs[qi-1]!=ds[di-1]) d3++;
-
             if(d2<ret) ret=d2;
             if(d3<ret) ret=d3;
-
             T[qi][di]=ret;
         }
     }
@@ -451,11 +445,13 @@ int EditDist(char *ds, int dn, char *qs, int qn, int qi)
     return ret;
 }
 
-int HammingDist(char *ds, int dn, char *qs, int qn)
+int HammingDist(WordText *dtxt, WordText *qtxt)
 {
     int num_mismatches=0;
-    for(int j=0;j<dn;j++) {
-        if(ds[j]!=qs[j]) num_mismatches++;
+
+    for(int j=0;qtxt->chars[j];j++) {
+        if(dtxt->chars[j]!=qtxt->chars[j])
+            num_mismatches++;
         if (num_mismatches>3) break;
     }
 
