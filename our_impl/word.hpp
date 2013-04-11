@@ -49,59 +49,48 @@ struct Word
     }
 
     int EditDist(Word *w) {
-        char* a = w->txt.chars;
-        int na = w->length;
-        char* b = txt.chars;
-        int nb = this->length;
-
         int oo=0x7FFFFFFF;
+
+        char* qs = w->txt.chars;
+        int qn = w->length;
+        char* ds = txt.chars;
+        int dn = this->length;
 
         int T[2][MAX_WORD_LENGTH+1];
 
-        int ia, ib;
+        int qi, di, cur=0;
 
-        int cur=0;
-        ia=0;
+        for(di=0;di<=dn;di++)
+            T[cur][di]=di;
 
-        for(ib=0;ib<=nb;ib++)
-            T[cur][ib]=ib;
-
-        cur=1-cur;
-
-        for(ia=1;ia<=na;ia++)
+        cur=1;
+        for(qi=1;qi<=qn;qi++)
         {
-            for(ib=0;ib<=nb;ib++)
-                T[cur][ib]=oo;
+            for(di=0;di<=dn;di++)
+                T[cur][di]=oo;
 
-            int ib_st=0;
-            int ib_en=nb;
+            di=0;
+            T[cur][di]=qi;
 
-            if(ib_st==0)
-            {
-                ib=0;
-                T[cur][ib]=ia;
-                ib_st++;
-            }
-
-            for(ib=ib_st;ib<=ib_en;ib++)
+            for(di=1;di<=dn;di++)
             {
                 int ret=oo;
 
-                int d1=T[1-cur][ib]+1;
-                int d2=T[cur][ib-1]+1;
-                int d3=T[1-cur][ib-1]; if(a[ia-1]!=b[ib-1]) d3++;
+                int d1=T[1-cur][di]+1;
+                int d2=T[cur][di-1]+1;
+                int d3=T[1-cur][di-1]; if(qs[qi-1]!=ds[di-1]) d3++;
 
                 if(d1<ret) ret=d1;
                 if(d2<ret) ret=d2;
                 if(d3<ret) ret=d3;
 
-                T[cur][ib]=ret;
+                T[cur][di]=ret;
             }
 
             cur=1-cur;
         }
 
-        int ret=T[1-cur][nb];
+        int ret=T[1-cur][dn];
 
         return ret;
     }

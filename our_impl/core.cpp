@@ -37,7 +37,7 @@ static IndexHashTable       mQW[3] = {
                              IndexHashTable(HASH_SIZE, 0),  ///< Unique indices of words of EXACT_MATCH Queries
                              IndexHashTable(HASH_SIZE, 1),  ///< Unique indices of words of HAMM_MATCH Queries
                              IndexHashTable(HASH_SIZE, 1)}; ///< Unique indices of words of EDIT_MATCH Queries
-static DFATrie              mQWTrie;
+static int                  mQWEditLast;
 
 /* Documents */
 static queue<Document>      mPendingDocs;                   ///< Documents that haven't yet been touched at all.
@@ -74,6 +74,7 @@ ErrorCode InitializeIndex()
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
     mPhase = PH_IDLE;
+    mQWEditLast=0;
     mBatchId=0;
 
     for (long t=0; t< NUM_THREADS; t++) {
@@ -120,7 +121,6 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
         mActiveQueries[query_id].words[num_words] = nw;
         if (match_type!=MT_EXACT_MATCH && mQW[match_type].insert(nw->gwdbIndex)) {
             nw->qwindex[match_type] = mQW[match_type].size()-1;     // The index of that word to the table of that specific match-type words.
-            mQWTrie.insertWord(nw);
         }
         num_words++;
     } while (*c2);
@@ -201,9 +201,9 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 void printStats()
 {
     fprintf(stdout, "\n=== STATS ================================== BATCH =============================================================================\n");
-    fprintf(stdout, "GWDB     Exact   Hamming   Edit    Approx   |  BatchID   ActiveQueries   batchDocs   batchWords   \n");
-    fprintf(stdout, "%-6u   %-5u   %-7u   %-5u   %-6u   |  %-7d   %-13lu   %-9lu   %-10u   \n",
-                     GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mQWTrie.stateCount(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size(), mBatchWords.size());
+    fprintf(stdout, "GWDB     Exact   Hamming   Edit    |  BatchID   ActiveQueries   batchDocs   batchWords   \n");
+    fprintf(stdout, "%-6u   %-5u   %-7u   %-5u   |  %-7d   %-13lu   %-9lu   %-10u   \n",
+                     GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size(), mBatchWords.size());
     fprintf(stdout, "================================================================================================================================\n");
     fflush(NULL);
 }
@@ -255,6 +255,18 @@ void* Thread(void *param)
         pthread_barrier_wait(&mBarrier);
         if (myThreadId==0)
         {
+            //~ sort(mQW[MT_EDIT_DIST].indexVec.begin()+mQWEditLast, mQW[MT_EDIT_DIST].indexVec.end(), comparator);
+            //~ char *s0 = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[mQWEditLast])->txt.chars;
+            //~ for (unsigned j=mQWEditLast+1; j<mQW[MT_EDIT_DIST].size() ; j++) {
+                //~ char *s1 = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[j])->txt.chars;
+                //~ unsigned i=0;
+                //~ while (s0[i] == s1[i]) i++;
+                //~ s0=s1;
+                //~ mQW[MT_EDIT_DIST].indexVec[j] |= (i<<27);
+            //~ }
+            mQWEditLast = mQW[MT_EDIT_DIST].size();
+            mBatchId++;
+
             pthread_mutex_lock(&mPendingDocs_mutex);
             if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
             pthread_cond_broadcast(&mPendingDocs_cond);
@@ -271,25 +283,27 @@ void* Thread(void *param)
          * For every dword of this batch, update its matching lists.
          */
         for (unsigned index = myThreadId ; index < mBatchWords.size() ; index += NUM_THREADS) {
-            Word *dw = GWDB.getWord(mBatchWords.indexVec[index]);
+            Word *wd = GWDB.getWord(mBatchWords.indexVec[index]);
 
-            for (unsigned j=dw->lastCheck_edit ; j<mQW[MT_EDIT_DIST].size() ; j++) {
-                Word* qw = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[j]);
-                if (abs(qw->length - dw->length)<=3 && qw->letterDiff(dw)<=6) {
-                    int dist = qw->EditDist(dw);
-                    if (dist<=3) dw->editMatches[dist].push_back(j);
+            for (unsigned j=wd->lastCheck_edit ; j<mQW[MT_EDIT_DIST].size() ; j++) {
+                Word* wq = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[j]);
+                if (abs(wq->length - wd->length)<=3 && wq->letterDiff(wd)<=6) {
+                    Word *wlong=wd, *wshort=wq;
+                    if (wq->length > wd->length) {wlong=wq; wshort=wd;}
+                    int dist = wlong->EditDist(wshort);
+                    if (dist<=3) wd->editMatches[dist].push_back(j);
                 }
             }
-            dw->lastCheck_edit = mQW[MT_EDIT_DIST].size();
+            wd->lastCheck_edit = mQW[MT_EDIT_DIST].size();
 
-            for (unsigned j=dw->lastCheck_hamm ; j<mQW[MT_HAMMING_DIST].size() ; j++) {
-                Word* qw = GWDB.getWord(mQW[MT_HAMMING_DIST].indexVec[j]);
-                if (qw->length == dw->length && qw->letterDiff(dw)<=6) {
-                    int dist = dw->HammingDist(qw);
-                    if (dist<=3) dw->hammMatches[dist].push_back(j);
+            for (unsigned j=wd->lastCheck_hamm ; j<mQW[MT_HAMMING_DIST].size() ; j++) {
+                Word* wq = GWDB.getWord(mQW[MT_HAMMING_DIST].indexVec[j]);
+                if (wq->length == wd->length && wq->letterDiff(wd)<=6) {
+                    int dist = wd->HammingDist(wq);
+                    if (dist<=3) wd->hammMatches[dist].push_back(j);
                 }
             }
-            dw->lastCheck_hamm = mQW[MT_HAMMING_DIST].size();
+            wd->lastCheck_hamm = mQW[MT_HAMMING_DIST].size();
 
         }
         pthread_barrier_wait(&mBarrier);
@@ -358,7 +372,6 @@ void* Thread(void *param)
             //~ printStats();
             mParsedDocs.clear();
             mBatchWords.clear();
-            mBatchId++;
         }
         //~ pthread_barrier_wait(&mBarrier);
 
