@@ -24,8 +24,8 @@ struct QWord {
     unsigned qwindex;
     WordText txt;
 
-    QWord(Word* w, unsigned qwi) :
-        length(w->length), letterBits(w->letterBits), common_prefix(0), qwindex(qwi), txt(w->txt)  {}
+    QWord(Word* w, MatchType mt) :
+        length(w->length), letterBits(w->letterBits), common_prefix(0), qwindex(w->qwindex[mt]), txt(w->txt)  {}
 };
 
 #endif

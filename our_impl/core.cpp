@@ -17,10 +17,9 @@ using namespace std;
 #define NUM_THREADS  24
 
 #include <core.h>
-#include "indexHashTable.hpp"
-#include "dfatrie.hpp"
 #include "word.hpp"
 #include "wordHashTable.hpp"
+#include "indexHashTable.hpp"
 #include "core.hpp"
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
@@ -123,8 +122,8 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
         GWDB.insert(wtxt, &nw);
         mActiveQueries[query_id].words[num_words] = nw;
         if (match_type!=MT_EXACT_MATCH && mQW[match_type].insert(nw->gwdbIndex)) {
-            int qwi = nw->qwindex[match_type] = mQW[match_type].size()-1;
-            mQWVec[match_type].emplace_back(nw, qwi);
+            nw->qwindex[match_type] = mQW[match_type].size()-1;
+            mQWVec[match_type].emplace_back(nw, match_type);
         }
 
         num_words++;
@@ -295,12 +294,13 @@ void* Thread(void *param)
             Word *wd = GWDB.getWord(mBatchWords.indexVec[index]);
             if (wd->lastCheck_edit >= mQWVec[MT_EDIT_DIST].size() && wd->lastCheck_hamm >= mQWVec[MT_HAMMING_DIST].size() ) continue;
 
-            WordText dtxt = wd->txt;
+
             unsigned last_check_edit = wd->lastCheck_edit;
             unsigned last_check_hamm = wd->lastCheck_hamm;
             int dn = wd->length;
             unsigned letter_bits = wd->letterBits;
             int seri=0;
+            WordText dtxt = wd->txt;
 
             for (unsigned j=last_check_edit ; j<mQW[MT_EDIT_DIST].size() ; j++) {
                 QWord &qw = mQWVec[MT_EDIT_DIST][j];
@@ -422,48 +422,39 @@ void ParseDoc(Document &doc, const long thread_id)
 
 int EditDist(char *ds, int dn, char *qs, int qn, int qi)
 {
-    int  oo=0x7FFFFFFF;
-    int di;
-
     static __thread long T[32][MAX_WORD_LENGTH+1];
+    int di, ret;
 
-    if (!qi)
-        for(di=0;di<=dn;di++) T[0][di]=di;
+    if (!qi) for(di=0;di<=dn;di++) T[0][di]=di;
 
     for(qi++;qi<=qn;qi++)
     {
         T[qi][0]=qi;
-        for(di=1;di<=dn;di++)
-            T[qi][di]=oo;
+        //~ for(di=1;di<=dn;di++)
+            //~ T[qi][di]=0x7FFFFFFF;
 
         for(di=1;di<=dn;di++)
         {
-            int ret=oo;
+            T[qi][di]=0x7FFFFFFF;
 
-            int d1=T[qi-1][di]+1;
-            int d2=T[qi][di-1]+1;
-            int d3=T[qi-1][di-1]; if(qs[qi-1]!=ds[di-1]) d3++;
+            ret =    T [qi-1] [di]  +1;
+            int d2 = T [qi]   [di-1] +1;
+            int d3 = T [qi-1] [di-1]; if(qs[qi-1]!=ds[di-1]) d3++;
 
-            if(d1<ret) ret=d1;
             if(d2<ret) ret=d2;
             if(d3<ret) ret=d3;
-
-            //~ if (di==(qi-qn+dn) && ret>3) return oo;
 
             T[qi][di]=ret;
         }
     }
 
-    return T[qi-1][dn];
+    return ret;
 }
 
 int HammingDist(char *ds, int dn, char *qs, int qn)
 {
-    int j, oo=0x7FFFFFFF;
-    if(dn!=qn) return oo;
-
-    unsigned int num_mismatches=0;
-    for(j=0;j<dn;j++) {
+    int num_mismatches=0;
+    for(int j=0;j<dn;j++) {
         if(ds[j]!=qs[j]) num_mismatches++;
         if (num_mismatches>3) break;
     }
