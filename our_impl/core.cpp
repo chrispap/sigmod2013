@@ -204,11 +204,11 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 /* Our Functions */
 void printStats()
 {
-    fprintf(stdout, "\n=== STATS ================================== BATCH =============================================================================\n");
+    fprintf(stdout, "\n=== STATS ================================== BATCH ===================================\n");
     fprintf(stdout, "GWDB     Exact   Hamming   Edit    |  BatchID   ActiveQueries   batchDocs   batchWords   \n");
     fprintf(stdout, "%-6u   %-5u   %-7u   %-5u   |  %-7d   %-13lu   %-9lu   %-10u   \n",
                      GWDB.size(), mQW[0].size(), mQW[1].size(), mQW[2].size(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size(), mBatchWords.size());
-    fprintf(stdout, "================================================================================================================================\n");
+    fprintf(stdout, "======================================================================================\n");
     fflush(NULL);
 }
 
@@ -294,7 +294,7 @@ void* Thread(void *param)
             Word *wd = GWDB.getWord(mBatchWords.indexVec[index]);
             if (wd->lastCheck_edit >= mQWVec[MT_EDIT_DIST].size() && wd->lastCheck_hamm >= mQWVec[MT_HAMMING_DIST].size() ) continue;
 
-            int seri=0;
+            register int seri=0;
             WordText dtxt = wd->txt;
             unsigned last_check_edit = wd->lastCheck_edit;
             unsigned last_check_hamm = wd->lastCheck_hamm;
@@ -421,24 +421,25 @@ void ParseDoc(Document &doc, const long thread_id)
 
 int EditDist(char *ds, int dn, char *qs, int qn, int qi)
 {
-    static __thread long T[32][MAX_WORD_LENGTH+1];
+    static __thread int T[32*32];
     int di, ret=0x7F;
 
-    if (!qi) for(di=0;di<=dn;di++) T[0][di]=di;
+    if (!qi) for(di=0;di<=dn;di++) T[di]=di;
 
     for(qi++;qi<=qn;qi++)
     {
-        T[qi][0]=qi;
+		int *L = T+qi*(dn+1);
+        L[0]=qi;
 
         for(di=1;di<=dn;di++)
         {
-            T[qi][di]=0x7FFFFFFF;
-            ret =    T [qi-1] [di]  +1;
-            int d2 = T [qi]   [di-1] +1;
-            int d3 = T [qi-1] [di-1]; if(qs[qi-1]!=ds[di-1]) d3++;
+            L[di]=0x7F;
+            ret =    L [di-dn-1]  +1;
+            int d2 = L [di-1] +1;
+            int d3 = L [di-dn-2]; if(qs[qi-1]!=ds[di-1]) d3++;
             if(d2<ret) ret=d2;
             if(d3<ret) ret=d3;
-            T[qi][di]=ret;
+            L[di]=ret;
         }
     }
 
