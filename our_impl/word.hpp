@@ -66,11 +66,9 @@ struct Word
         cur=1;
         for(qi=1;qi<=qn;qi++)
         {
-            for(di=0;di<=dn;di++)
+            T[cur][0]=qi;
+            for(di=1;di<=dn;di++)
                 T[cur][di]=oo;
-
-            di=0;
-            T[cur][di]=qi;
 
             for(di=1;di<=dn;di++)
             {
@@ -84,15 +82,15 @@ struct Word
                 if(d2<ret) ret=d2;
                 if(d3<ret) ret=d3;
 
+                if (di==(qi-qn+dn) && ret>3) return oo;
+
                 T[cur][di]=ret;
             }
 
             cur=1-cur;
         }
 
-        int ret=T[1-cur][dn];
-
-        return ret;
+        return T[1-cur][dn];
     }
 
     int HammingDist(Word *w) {
