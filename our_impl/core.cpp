@@ -4,6 +4,7 @@
 #include <cmath>
 #include <pthread.h>
 #include <utility>
+#include <algorithm>
 #include <unordered_map>
 #include <queue>
 #include <map>
@@ -12,6 +13,9 @@
 
 using namespace std;
 
+#define HASH_SIZE    (1<<20)
+#define NUM_THREADS  24
+
 #include <core.h>
 #include "indexHashTable.hpp"
 #include "dfatrie.hpp"
@@ -19,25 +23,18 @@ using namespace std;
 #include "wordHashTable.hpp"
 #include "core.hpp"
 
-#define HASH_SIZE    (1<<20)
-#define NUM_THREADS  24
-
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
 /* Function prototypes */
 static void  printStats ();
 static void* Thread (void *param);
 static void  ParseDoc (Document &doc, const long thread_id);
+static int EditDist(char *ds, int dn, char *qs, int qn, int qi);
+static int HammingDist(char *a, int na, char *b, int nb);
 
 /* Globals */
 static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to  EVERY  single word encountered.
-static IndexHashTable       mDWords(HASH_SIZE,1);           ///< Unique indices of words of ALL PAST Documents
 static IndexHashTable       mBatchWords(HASH_SIZE,1);
-static IndexHashTable       mQW[3] = {
-                             IndexHashTable(HASH_SIZE, 0),  ///< Unique indices of words of EXACT_MATCH Queries
-                             IndexHashTable(HASH_SIZE, 1),  ///< Unique indices of words of HAMM_MATCH Queries
-                             IndexHashTable(HASH_SIZE, 1)}; ///< Unique indices of words of EDIT_MATCH Queries
-static int                  mQWEditLast;
 
 /* Documents */
 static queue<Document>      mPendingDocs;                   ///< Documents that haven't yet been touched at all.
@@ -47,6 +44,9 @@ static int                  mBatchId;
 
 /* Queries */
 static vector<Query>        mActiveQueries;                 ///< Active Query IDs.
+static vector<QWord>        mQWVec[3];
+static IndexHashTable       mQW[3];
+static int                  mQWLast[3];
 
 /* Threading */
 static volatile PHASE       mPhase;                         ///< Indicates in which phase the threads should be.
@@ -58,6 +58,11 @@ static pthread_mutex_t      mReadyDocs_mutex;               ///<
 static pthread_cond_t       mReadyDocs_cond;                ///<
 static pthread_barrier_t    mBarrier;
 
+struct LTW {
+  bool operator()(const QWord &qw1, const QWord &qw2 ) const {
+    return strcmp(qw1.txt.chars, qw2.txt.chars ) < 0;
+  }
+} ltw;
 
 /* Library Functions */
 ErrorCode InitializeIndex()
@@ -74,8 +79,6 @@ ErrorCode InitializeIndex()
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
     mPhase = PH_IDLE;
-    mQWEditLast=0;
-    mBatchId=0;
 
     for (long t=0; t< NUM_THREADS; t++) {
         int rc = pthread_create(&mThreads[t], &attr, Thread, (void *)t);
@@ -120,8 +123,10 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
         GWDB.insert(wtxt, &nw);
         mActiveQueries[query_id].words[num_words] = nw;
         if (match_type!=MT_EXACT_MATCH && mQW[match_type].insert(nw->gwdbIndex)) {
-            nw->qwindex[match_type] = mQW[match_type].size()-1;     // The index of that word to the table of that specific match-type words.
+            int qwi = nw->qwindex[match_type] = mQW[match_type].size()-1;
+            mQWVec[match_type].emplace_back(nw, qwi);
         }
+
         num_words++;
     } while (*c2);
 
@@ -235,9 +240,10 @@ void* Thread(void *param)
             pthread_cond_broadcast(&mPendingDocs_cond);
             pthread_mutex_unlock(&mPendingDocs_mutex);
 
-            /* Parse the document and append it to mParsedDocs */
+            /* Parse the document... */
             ParseDoc(doc, myThreadId);
 
+            /* ...and append it to mParsedDocs */
             pthread_mutex_lock(&mParsedDocs_mutex);
             mParsedDocs.push_back(doc);
             pthread_mutex_unlock(&mParsedDocs_mutex);
@@ -255,16 +261,19 @@ void* Thread(void *param)
         pthread_barrier_wait(&mBarrier);
         if (myThreadId==0)
         {
-            //~ sort(mQW[MT_EDIT_DIST].indexVec.begin()+mQWEditLast, mQW[MT_EDIT_DIST].indexVec.end(), comparator);
-            //~ char *s0 = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[mQWEditLast])->txt.chars;
-            //~ for (unsigned j=mQWEditLast+1; j<mQW[MT_EDIT_DIST].size() ; j++) {
-                //~ char *s1 = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[j])->txt.chars;
-                //~ unsigned i=0;
-                //~ while (s0[i] == s1[i]) i++;
-                //~ s0=s1;
-                //~ mQW[MT_EDIT_DIST].indexVec[j] |= (i<<27);
-            //~ }
-            mQWEditLast = mQW[MT_EDIT_DIST].size();
+            sort(mQWVec[MT_EDIT_DIST].begin()+mQWLast[MT_EDIT_DIST], mQWVec[MT_EDIT_DIST].end(), ltw);
+
+            char *s0 = mQWVec[MT_EDIT_DIST][mQWLast[MT_EDIT_DIST]].txt.chars;
+
+            for (unsigned j=mQWLast[MT_EDIT_DIST]+1; j<mQWVec[MT_EDIT_DIST].size() ; j++) {
+                char *s1 = mQWVec[MT_EDIT_DIST][j].txt.chars;
+                unsigned i=0;
+                while (s0[i] == s1[i]) i++;
+                s0=s1;
+                mQWVec[MT_EDIT_DIST][j].common_prefix = i;
+            }
+
+            mQWLast[MT_EDIT_DIST] = mQW[MT_EDIT_DIST].size();
             mBatchId++;
 
             pthread_mutex_lock(&mPendingDocs_mutex);
@@ -284,22 +293,32 @@ void* Thread(void *param)
          */
         for (unsigned index = myThreadId ; index < mBatchWords.size() ; index += NUM_THREADS) {
             Word *wd = GWDB.getWord(mBatchWords.indexVec[index]);
+            if (wd->lastCheck_edit >= mQWVec[MT_EDIT_DIST].size() && wd->lastCheck_hamm >= mQWVec[MT_HAMMING_DIST].size() ) continue;
 
-            for (unsigned j=wd->lastCheck_edit ; j<mQW[MT_EDIT_DIST].size() ; j++) {
-                Word* wq = GWDB.getWord(mQW[MT_EDIT_DIST].indexVec[j]);
-                if (abs(wq->length - wd->length)<=3 && wq->letterDiff(wd)<=6) {
-                    Word *wlong=wd, *wshort=wq;
-                    if (wq->length > wd->length) {wlong=wq; wshort=wd;}
-                    int dist = wlong->EditDist(wshort);
-                    if (dist<=3) wd->editMatches[dist].push_back(j);
+            WordText dtxt = wd->txt;
+            unsigned last_check_edit = wd->lastCheck_edit;
+            unsigned last_check_hamm = wd->lastCheck_hamm;
+            int dn = wd->length;
+            unsigned letter_bits = wd->letterBits;
+            int seri=0;
+
+            for (unsigned j=last_check_edit ; j<mQW[MT_EDIT_DIST].size() ; j++) {
+                QWord &qw = mQWVec[MT_EDIT_DIST][j];
+
+                if (abs(qw.length - dn)<=3 && Word::letterDiff(letter_bits, qw.letterBits)<=6) {
+                    int dist = EditDist(dtxt.chars, dn, qw.txt.chars, qw.length, seri? qw.common_prefix: 0);
+                    if (dist<=3) wd->editMatches[dist].push_back(qw.qwindex);
+                    seri++;
                 }
+                else seri=0;
             }
             wd->lastCheck_edit = mQW[MT_EDIT_DIST].size();
 
-            for (unsigned j=wd->lastCheck_hamm ; j<mQW[MT_HAMMING_DIST].size() ; j++) {
-                Word* wq = GWDB.getWord(mQW[MT_HAMMING_DIST].indexVec[j]);
-                if (wq->length == wd->length && wq->letterDiff(wd)<=6) {
-                    int dist = wd->HammingDist(wq);
+            for (unsigned j=last_check_hamm ; j<mQW[MT_HAMMING_DIST].size() ; j++) {
+                QWord &qw = mQWVec[MT_HAMMING_DIST][j];
+
+                if (qw.length == dn && Word::letterDiff(letter_bits, qw.letterBits)<=6) {
+                    int dist = HammingDist(dtxt.chars, dn, qw.txt.chars, qw.length);
                     if (dist<=3) wd->hammMatches[dist].push_back(j);
                 }
             }
@@ -399,4 +418,55 @@ void ParseDoc(Document &doc, const long thread_id)
 
     } while (*c2);
 
+}
+
+int EditDist(char *ds, int dn, char *qs, int qn, int qi)
+{
+    int  oo=0x7FFFFFFF;
+    int di;
+
+    static __thread long T[32][MAX_WORD_LENGTH+1];
+
+    if (!qi)
+        for(di=0;di<=dn;di++) T[0][di]=di;
+
+    for(qi++;qi<=qn;qi++)
+    {
+        T[qi][0]=qi;
+        for(di=1;di<=dn;di++)
+            T[qi][di]=oo;
+
+        for(di=1;di<=dn;di++)
+        {
+            int ret=oo;
+
+            int d1=T[qi-1][di]+1;
+            int d2=T[qi][di-1]+1;
+            int d3=T[qi-1][di-1]; if(qs[qi-1]!=ds[di-1]) d3++;
+
+            if(d1<ret) ret=d1;
+            if(d2<ret) ret=d2;
+            if(d3<ret) ret=d3;
+
+            //~ if (di==(qi-qn+dn) && ret>3) return oo;
+
+            T[qi][di]=ret;
+        }
+    }
+
+    return T[qi-1][dn];
+}
+
+int HammingDist(char *ds, int dn, char *qs, int qn)
+{
+    int j, oo=0x7FFFFFFF;
+    if(dn!=qn) return oo;
+
+    unsigned int num_mismatches=0;
+    for(j=0;j<dn;j++) {
+        if(ds[j]!=qs[j]) num_mismatches++;
+        if (num_mismatches>3) break;
+    }
+
+    return num_mismatches;
 }

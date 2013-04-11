@@ -17,4 +17,15 @@ struct Document
     vector<QueryID> *matchingQueries;
 };
 
+struct QWord {
+    int length;
+    unsigned letterBits;
+    unsigned common_prefix;
+    unsigned qwindex;
+    WordText txt;
+
+    QWord(Word* w, unsigned qwi) :
+        length(w->length), letterBits(w->letterBits), common_prefix(0), qwindex(qwi), txt(w->txt)  {}
+};
+
 #endif
