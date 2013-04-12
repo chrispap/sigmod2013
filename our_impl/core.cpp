@@ -44,7 +44,7 @@ static int                  mBatchId;
 /* Queries */
 static vector<Query>        mActiveQueries;                 ///< Active Query IDs.
 static vector<QWord>        mQWVec[3];
-static IndexHashTable       mQW[3];
+static IndexHashTable       mQW[3] = {IndexHashTable(0,false), IndexHashTable(HASH_SIZE,false), IndexHashTable(HASH_SIZE,false) };
 static int                  mQWLast[3];
 
 /* Threading */
@@ -428,7 +428,7 @@ int EditDist(char *ds, int dn, char *qs, int qn, int qi)
 
     for(qi++;qi<=qn;qi++)
     {
-		int *L = T+qi*(dn+1);
+        int *L = T+qi*(dn+1);
         L[0]=qi;
 
         for(di=1;di<=dn;di++)

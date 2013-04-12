@@ -23,7 +23,7 @@ struct QWord {
     unsigned common_prefix;
     WordText txt;
     unsigned qwindex;
-    
+
     QWord(Word* w, MatchType mt) :
         length(w->length), letterBits(w->letterBits), common_prefix(0), txt(w->txt), qwindex(w->qwindex[mt])  {}
 };

@@ -19,7 +19,7 @@ private:
     unsigned            numUnits;
 
 public:
-    IndexHashTable (unsigned _capacity=HASH_SIZE, bool _keepIndexVec=false) :
+    IndexHashTable (unsigned _capacity, bool _keepIndexVec=false) :
         mSize(0),
         keepIndexVec(_keepIndexVec),
         capacity(_capacity)
