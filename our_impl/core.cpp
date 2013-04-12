@@ -29,7 +29,7 @@ static void  printStats ();
 static void* Thread (void *param);
 static void  ParseDoc (Document &doc, const long thread_id);
 static int EditDist(char *ds, int dn, char *qs, int qn, int qi);
-static int HammingDist(WordText *dtxt, WordText *qtxt);
+static int HammingDist(WordText *dtxt, WordText *qtxt, int length);
 
 /* Globals */
 static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to  EVERY  single word encountered.
@@ -117,7 +117,7 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
     do {
         for (unsigned wi=0; wi<WUNITS_MAX; wi++) wtxt.ints[wi]=0;
         i=0; do {wtxt.chars[i++] = *++c2;} while (*c2!=' ' && *c2 );
-        i--; while (i<MAX_WORD_LENGTH+1) wtxt.chars[i++] = 0;
+        wtxt.chars[--i] = 0;
 
         GWDB.insert(wtxt, &nw);
         mActiveQueries[query_id].words[num_words] = nw;
@@ -317,7 +317,7 @@ void* Thread(void *param)
                 QWord &qw = mQWVec[MT_HAMMING_DIST][j];
 
                 if (qw.length == dn && Word::letterDiff(letter_bits, qw.letterBits)<=6) {
-                    int dist = HammingDist(&dtxt, &qw.txt);
+                    int dist = HammingDist(&dtxt, &qw.txt, dn);
                     if (dist<=3) wd->hammMatches[dist].push_back(j);
                 }
             }
@@ -410,7 +410,7 @@ void ParseDoc(Document &doc, const long thread_id)
     do {
         for (unsigned wi=0; wi<WUNITS_MAX; wi++) wtxt.ints[wi]=0;
         i=0; do {wtxt.chars[i++] = *++c2;} while (*c2!=' ' && *c2 );
-        i--; while (i<MAX_WORD_LENGTH+1) wtxt.chars[i++] = 0;
+        wtxt.chars[--i] = 0;
 
         GWDB.insert(wtxt, &nw);
         doc.words->insert(nw->gwdbIndex);
@@ -446,9 +446,18 @@ int EditDist(char *ds, int dn, char *qs, int qn, int qi)
     return ret;
 }
 
-int HammingDist(WordText *dtxt, WordText *qtxt)
+int HammingDist(WordText *dtxt, WordText *qtxt, int length)
 {
     int num_mismatches=0;
+
+    //~ for (unsigned i=0; i<=(length-1)/sizeof(wunit); i++) {
+        //~ if (!dtxt->ints[i]) return num_mismatches;
+        //~ wunit c8 = dtxt->ints[i] ^ qtxt->ints[i];
+        //~ while (c8) {
+            //~ num_mismatches++;
+            //~ c8 &= (0xFFFFFFFFFFFFFF00UL << (((__builtin_ffsl(c8)-1)>>3)<<3));
+        //~ }
+    //~ }
 
     for(int j=0;qtxt->chars[j];j++) {
         if(dtxt->chars[j]!=qtxt->chars[j])
