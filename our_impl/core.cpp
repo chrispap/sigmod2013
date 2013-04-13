@@ -32,7 +32,7 @@ static void  Match (long thread_id);
 static void  Intersect (long thread_d);
 static void  ParseDoc (Document &doc, const long thread_id);
 static int   EditDist (char *ds, int dn, char *qs, int qn, int *T, int qi=0);
-static int   HammingDist (WordText *dtxt, WordText *qtxt, int length);
+static int   HammingDist (WordText *dtxt, WordText *qtxt, int *T, int qi=0);
 
 /* Globals */
 static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to  EVERY  single word encountered.
@@ -48,7 +48,7 @@ static unsigned             mBatchId;
 static vector<Query>        mActiveQueries;
 static IndexHashTable       mQWHash[2];
 static vector<QWord>        mQWEdit;
-static int                  mQWLastEdit;
+static unsigned             mQWLastEdit;
 static vector<QWMap>        mQWordsHamm;
 
 /* Threading */
@@ -303,17 +303,32 @@ void Prepare()
 {
     sort(mQWEdit.begin()+mQWLastEdit, mQWEdit.end(), ltw);
 
-    char *s0 = mQWEdit[mQWLastEdit].txt.chars;
-
-    for (unsigned j=mQWLastEdit+1; j<mQWEdit.size() ; j++) {
-        char *s1 = mQWEdit[j].txt.chars;
-        unsigned i=0;
-        while (s0[i] == s1[i]) i++;
-        s0=s1;
-        mQWEdit[j].common_prefix = i;
+    if (mQWEdit.size() > mQWLastEdit+1) {
+        char *s0 = mQWEdit[mQWLastEdit].txt.chars;
+        for (unsigned j=mQWLastEdit+1; j<mQWEdit.size() ; j++) {
+            char *s1 = mQWEdit[j].txt.chars;
+            unsigned i=0;
+            while (s0[i] == s1[i]) i++;
+            mQWEdit[j].common_prefix = i;
+            s0=s1;
+        }
     }
-
     mQWLastEdit = mQWEdit.size();
+
+    for (int len=MIN_WORD_LENGTH; len<=MAX_WORD_LENGTH; len++) {
+        sort (mQWordsHamm[mBatchId][len].begin(), mQWordsHamm[mBatchId][len].end(), ltw);
+
+        if (mQWordsHamm[mBatchId][len].size()>1) {
+            char *s0 = mQWordsHamm[mBatchId][len][0].txt.chars;
+            for (unsigned j=1; j<mQWordsHamm[mBatchId][len].size() ; j++) {
+                char *s1 = mQWordsHamm[mBatchId][len][j].txt.chars;
+                unsigned i=0;
+                while (s0[i] == s1[i]) i++;
+                mQWordsHamm[mBatchId][len][j].common_prefix = i;
+                s0=s1;
+            }
+        }
+    }
     mBatchId++;
     mQWordsHamm.resize(mBatchId+1);
 
@@ -353,13 +368,15 @@ void Intersect(long myThreadId)
             }
 
         }
-        wd->lastCheck_edit = mQWEdit.size();
 
+        wd->lastCheck_edit = mQWEdit.size();
         for (unsigned j=last_check_hamm ; j<mBatchId ; j++) {
             for (QWord &qw : mQWordsHamm[j][dn]) {
+                qi=min(qi, qw.common_prefix);
                 if (Word::letterDiff(letter_bits, qw.letterBits)<=6) {
-                    int dist = HammingDist(&dtxt, &qw.txt, dn);
+                    int dist = HammingDist(&dtxt, &qw.txt, T+(32*31), qi);
                     if (dist<=3) wd->hammMatches[dist].push_back(qw.qwindex);
+                    qi=qw.common_prefix;
                 }
             }
         }
@@ -447,25 +464,15 @@ int EditDist(char *ds, int dn, char *qs, int qn, int *T ,int qi)
     return ret;
 }
 
-int HammingDist(WordText *dtxt, WordText *qtxt, int length)
+int HammingDist(WordText *dtxt, WordText *qtxt, int *T, int qi)
 {
-    int num_mismatches=0;
+    int num_mismatches = qi? T[qi-1] : 0;
 
-    for(int j=0;j<length;j++) {
-        if(dtxt->chars[j]!=qtxt->chars[j])
-            num_mismatches++;
-        if (num_mismatches>3) break;
+    while(qtxt->chars[qi]) {
+        if(dtxt->chars[qi]!=qtxt->chars[qi]) num_mismatches++;
+        T[qi++]=num_mismatches;
+        //~ if (num_mismatches>3) break;
     }
-
-    /* for (unsigned i=0; i<=(length-1)/sizeof(wunit); i++) {
-        if (!dtxt->ints[i]) return num_mismatches;
-        wunit c8 = dtxt->ints[i] ^ qtxt->ints[i];
-        while (c8) {
-            num_mismatches++;
-            if (num_mismatches>3) return num_mismatches;
-            c8 &= (0xFFFFFFFFFFFFFF00UL << (((__builtin_ffsl(c8)-1)>>3)<<3));
-        }
-    } */
 
     return num_mismatches;
 }
