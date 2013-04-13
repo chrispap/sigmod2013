@@ -31,7 +31,7 @@ static void  Prepare ();
 static void  Match (long thread_id);
 static void  Intersect (long thread_d);
 static void  ParseDoc (Document &doc, const long thread_id);
-static int   EditDist (char *ds, int dn, char *qs, int qn, int qi);
+static int   EditDist (char *ds, int dn, char *qs, int qn, int *T, int qi=0);
 static int   HammingDist (WordText *dtxt, WordText *qtxt, int length);
 
 /* Globals */
@@ -331,11 +331,12 @@ void Prepare()
 /** For every dword of this batch, update its matching lists */
 void Intersect(long myThreadId)
 {
+    int T[32*32];
     for (unsigned index = myThreadId ; index < mBatchWords.size() ; index += NUM_THREADS)
     {
         Word *wd = GWDB.getWord(mBatchWords.indexVec[index]);
 
-        int seri=0;
+        unsigned qi=0;
         WordText dtxt = wd->txt;
         unsigned last_check_edit = wd->lastCheck_edit;
         unsigned last_check_hamm = wd->lastCheck_hamm;
@@ -344,12 +345,13 @@ void Intersect(long myThreadId)
 
         for (unsigned j=last_check_edit ; j<mQWEdit.size() ; j++) {
             QWord &qw = mQWEdit[j];
+            qi=min(qi, qw.common_prefix);
             if (abs(qw.length - dn)<=3 && Word::letterDiff(letter_bits, qw.letterBits)<=6) {
-                int dist = EditDist(dtxt.chars, dn, qw.txt.chars, qw.length, seri? qw.common_prefix: 0);
+                int dist = EditDist(dtxt.chars, dn, qw.txt.chars, qw.length, T, qi);
                 if (dist<=3) wd->editMatches[dist].push_back(qw.qwindex);
-                seri++;
+                qi=qw.common_prefix;
             }
-            else seri=0;
+
         }
         wd->lastCheck_edit = mQWEdit.size();
 
@@ -419,9 +421,8 @@ void Match(long myThreadId)
     free(qwH);
 }
 
-int EditDist(char *ds, int dn, char *qs, int qn, int qi)
+int EditDist(char *ds, int dn, char *qs, int qn, int *T ,int qi)
 {
-    static __thread int T[32*32];
     int di, ret=0x7F;
 
     if (!qi) for(di=0;di<=dn;di++) T[di]=di;
@@ -450,7 +451,7 @@ int HammingDist(WordText *dtxt, WordText *qtxt, int length)
 {
     int num_mismatches=0;
 
-    for(int j=0;qtxt->chars[j];j++) {
+    for(int j=0;j<length;j++) {
         if(dtxt->chars[j]!=qtxt->chars[j])
             num_mismatches++;
         if (num_mismatches>3) break;
