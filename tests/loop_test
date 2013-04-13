@@ -4,7 +4,7 @@ L=1
 
 while :
 do
-    ./testdriver 2> err.txt > out.txt
+    ./testdriver test_data/inter_test.txt 2>> err.txt >> out.txt
     if [ $? -ne 0 ];
     then
         break
