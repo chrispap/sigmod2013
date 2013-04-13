@@ -34,7 +34,7 @@ IMPL_O=our_impl/core.o
 # Compiler flags
 CC  = gcc
 CXX = g++-4.7
-CFLAGS= -O3 -fPIC -Wall -I. -I./include
+CFLAGS= -DNDEBUG -O3 -fPIC -Wall -I. -I./include
 CXXFLAGS= -std=c++11 $(CFLAGS)
 LDFLAGS= -lpthread
 

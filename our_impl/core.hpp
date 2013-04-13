@@ -28,4 +28,10 @@ struct QWord {
         length(w->length), letterBits(w->letterBits), common_prefix(0), txt(w->txt), qwindex(w->qwindex[mt])  {}
 };
 
+struct QWMap {
+    vector<QWord>& operator[] (int length) { return vec[length-MIN_WORD_LENGTH]; }
+protected:
+    vector<QWord> vec[MAX_WORD_LENGTH-MIN_WORD_LENGTH+1];
+};
+
 #endif
