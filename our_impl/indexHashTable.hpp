@@ -25,9 +25,8 @@ public:
         capacity(_capacity)
     {
         numUnits = capacity/BITS_PER_UNIT;
-        if (capacity%BITS_PER_UNIT) numUnits++;     // An to capacity den einai akeraio pollaplasio tou BITS_PER_UNIT, tote theloume allo ena unit.
+        if (capacity%BITS_PER_UNIT) numUnits++;     		// An to capacity den einai akeraio pollaplasio tou BITS_PER_UNIT, tote theloume allo ena unit.
         units = (unit*) malloc (numUnits*sizeof(unit));     // Allocate space with capacity bits. (NOT BYTES, BITS!)
-        //~ if (units==0) {fprintf(stderr, "Could not allocate memory for IndexHashTable"); exit(-1);}
         for (unsigned i=0 ; i<numUnits ; i++) units[i]=0;
     }
 

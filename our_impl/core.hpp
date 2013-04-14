@@ -17,25 +17,24 @@ struct Document
     vector<QueryID> *matchingQueries;
 };
 
-struct QWord {
+struct QWordE {
     int length;
     unsigned letterBits;
     unsigned common_prefix;
     WordText txt;
     unsigned qwindex;
 
-    QWord(Word* w, MatchType mt) :
+    QWordE(Word* w, MatchType mt) :
         length(w->length), letterBits(w->letterBits), common_prefix(0), txt(w->txt), qwindex(w->qwindex[mt])  {}
 };
 
 struct QWordH {
     unsigned letterBits;
-    unsigned common_prefix;
     WordText txt;
     unsigned qwindex;
 
     QWordH(Word* w, MatchType mt) :
-        letterBits(w->letterBits), common_prefix(0), txt(w->txt), qwindex(w->qwindex[mt])  {}
+        letterBits(w->letterBits), txt(w->txt), qwindex(w->qwindex[mt])  {}
 };
 
 struct QWMap {

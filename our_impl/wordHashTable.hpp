@@ -6,7 +6,7 @@ class WordHashTable
     Word**              table;
     unsigned            capacity;
     unsigned            mSize;
-    pthread_mutex_t     mutex;
+    //~ pthread_mutex_t     mutex;
 
     unsigned hash(WordText &wtxt) const {
         unsigned val = 0;
@@ -16,17 +16,17 @@ class WordHashTable
         return val;
     }
 
-    void lock() {
-        pthread_mutex_lock(&mutex);
-    }
+    //~ void lock() {
+        //~ pthread_mutex_lock(&mutex);
+    //~ }
 
-    void unlock() {
-        pthread_mutex_unlock(&mutex);
-    }
+    //~ void unlock() {
+        //~ pthread_mutex_unlock(&mutex);
+    //~ }
 
 public:
     WordHashTable(unsigned _capacity) {
-        pthread_mutex_init(&mutex,   NULL);
+        //~ pthread_mutex_init(&mutex,   NULL);
         mSize=0;
         capacity = _capacity;
         table = (Word**) malloc (capacity * sizeof(Word*));
@@ -48,9 +48,8 @@ public:
         unsigned index = hash(wtxt);
         while (table[index] && !table[index]->equals(wtxt)) index = (index+1) % capacity;
         if (!table[index]) {
-            table[index] = new Word(wtxt, index);
-            mSize++;
-            *inserted_word = table[index];
+            *inserted_word = table[index] = new Word(wtxt, index);
+            //~ mSize++;
             //~ unlock();
             return true;
         }
@@ -60,10 +59,7 @@ public:
     }
 
     Word* getWord(unsigned index) const {
-        //~ if (index>=capacity)
-            //~ return NULL;
-        //~ else
-            return table[index];
+		return table[index];
     }
 
     unsigned size() const { return mSize; }

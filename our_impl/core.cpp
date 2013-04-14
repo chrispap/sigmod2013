@@ -11,8 +11,10 @@
 #include <list>
 #include <set>
 
-#define HASH_SIZE    (1<<20)
+#define HASH_SIZE    (1<<19)
 #define NUM_THREADS  24
+
+enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
 
 using namespace std;
 
@@ -22,17 +24,15 @@ using namespace std;
 #include "indexHashTable.hpp"
 #include "core.hpp"
 
-enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
-
 /* Function prototypes */
 static void  PrintStats ();
 static void* Thread (void *param);
-static void  Prepare ();
-static void  Match (long thread_id);
-static void  Intersect (long thread_d);
-static void  ParseDoc (Document &doc, const long thread_id);
-static int   EditDist (char *ds, int dn, char *qs, unsigned qn, int *T, unsigned *qi);
-static int   HammingDist (WordText *dtxt, WordText *qtxt, int *T, unsigned *qi);
+static inline void  Prepare ();
+static inline void  Match (long thread_id);
+static inline void  Intersect (long thread_d);
+static inline void  ParseDoc (Document &doc, const long thread_id);
+static inline int   EditDist (char *ds, int dn, char *qs, unsigned qn, int *T, unsigned *qi);
+static inline int   HammingDist (char *dtxt, char *qtxt);
 
 /* Globals */
 static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to  EVERY  single word encountered.
@@ -47,7 +47,7 @@ static unsigned             mBatchId;
 /* Queries */
 static vector<Query>        mActiveQueries;
 static IndexHashTable       mQWHash[2];
-static vector<QWord>        mQWEdit;
+static vector<QWordE>       mQWEdit;
 static unsigned             mQWLastEdit;
 static vector<QWMap>        mQWordsHamm;
 
@@ -59,10 +59,10 @@ static pthread_mutex_t      mPendingDocs_mutex;             ///<
 static pthread_cond_t       mPendingDocs_cond;              ///<
 static pthread_mutex_t      mReadyDocs_mutex;               ///<
 static pthread_cond_t       mReadyDocs_cond;                ///<
-static pthread_barrier_t    mBarrier;
+static pthread_barrier_t    mBarrier;						///<
 
-struct LTW {
-    bool operator()(const QWord &qw1, const QWord &qw2 ) const {
+struct LTWE {
+    bool operator()(const QWordE &qw1, const QWordE &qw2 ) const {
         return strcmp(qw1.txt.chars, qw2.txt.chars ) < 0;
     }
 } ltw;
@@ -227,12 +227,11 @@ void PrintStats()
 void* Thread(void *param)
 {
     const long myThreadId = (long) param;
-    //fprintf(stdout, ">> THREAD#%2ld STARTS \n", myThreadId); fflush(stdout);
 
     while (1)
     {
         pthread_barrier_wait(&mBarrier);
-        /* PHASE 01 */
+        /** PHASE 01 */
         while (1)
         {
             pthread_mutex_lock(&mPendingDocs_mutex);
@@ -258,11 +257,11 @@ void* Thread(void *param)
             pthread_mutex_unlock(&mParsedDocs_mutex);
         }
 
-        /** FINISH DETECTED */
+        /* Finish detected, thread should exit. */
         if (mPhase == PH_FINISHED) break;
         pthread_barrier_wait(&mBarrier);
 
-        /** MATCHING PHASE */
+        /** PHASE 01 */
         if (myThreadId==0) Prepare();
         pthread_barrier_wait(&mBarrier);
 
@@ -272,7 +271,7 @@ void* Thread(void *param)
         Match(myThreadId);
         pthread_barrier_wait(&mBarrier);
 
-        /** BATCH OVER */
+        /* Batch completed */
         if (myThreadId==0) {
             mParsedDocs.clear();
             mBatchWords.clear();
@@ -280,7 +279,6 @@ void* Thread(void *param)
 
     }
 
-    //printf(stdout, ">> THREAD#%2ld EXITS \n", myThreadId); fflush(stdout);
     return NULL;
 }
 
@@ -305,6 +303,7 @@ void ParseDoc(Document &doc, const long thread_id)
 
 }
 
+/** Prepare the necessary structures for the intersection */
 void Prepare()
 {
     sort(mQWEdit.begin()+mQWLastEdit, mQWEdit.end(), ltw);
@@ -321,20 +320,20 @@ void Prepare()
     }
     mQWLastEdit = mQWEdit.size();
 
-    for (int len=MIN_WORD_LENGTH; len<=MAX_WORD_LENGTH; len++) {
-        sort (mQWordsHamm[mBatchId][len].begin(), mQWordsHamm[mBatchId][len].end(), ltwh);
+    //~ for (int len=MIN_WORD_LENGTH; len<=MAX_WORD_LENGTH; len++) {
+        //~ sort (mQWordsHamm[mBatchId][len].begin(), mQWordsHamm[mBatchId][len].end(), ltwh);
 
-        if (mQWordsHamm[mBatchId][len].size()>1) {
-            char *s0 = mQWordsHamm[mBatchId][len][0].txt.chars;
-            for (unsigned j=1; j<mQWordsHamm[mBatchId][len].size() ; j++) {
-                char *s1 = mQWordsHamm[mBatchId][len][j].txt.chars;
-                unsigned i=0;
-                while (s0[i] == s1[i]) i++;
-                mQWordsHamm[mBatchId][len][j].common_prefix = i;
-                s0=s1;
-            }
-        }
-    }
+        //~ if (mQWordsHamm[mBatchId][len].size()>1) {
+            //~ char *s0 = mQWordsHamm[mBatchId][len][0].txt.chars;
+            //~ for (unsigned j=1; j<mQWordsHamm[mBatchId][len].size() ; j++) {
+                //~ char *s1 = mQWordsHamm[mBatchId][len][j].txt.chars;
+                //~ unsigned i=0;
+                //~ while (s0[i] == s1[i]) i++;
+                //~ mQWordsHamm[mBatchId][len][j].common_prefix = i;
+                //~ s0=s1;
+            //~ }
+        //~ }
+    //~ }
     mBatchId++;
     mQWordsHamm.resize(mBatchId+1);
 
@@ -365,12 +364,11 @@ void Intersect(long myThreadId)
         unsigned letter_bits = wd->letterBits;
 
         for (unsigned j=last_check_edit ; j<mQWEdit.size() ; j++) {
-            QWord &qw = mQWEdit[j];
+            QWordE &qw = mQWEdit[j];
             qi=min(qi, qw.common_prefix);
             if (abs(qw.length - dn)<=3 && Word::letterDiff(letter_bits, qw.letterBits)<=6) {
                 int dist = EditDist(dtxt.chars, dn, qw.txt.chars, qw.length, T, &qi);
                 if (dist<=3) wd->editMatches[dist].push_back(qw.qwindex);
-                //qi=qw.common_prefix;
             }
 
         }
@@ -378,11 +376,9 @@ void Intersect(long myThreadId)
         wd->lastCheck_edit = mQWEdit.size();
         for (unsigned j=last_check_hamm ; j<mBatchId ; j++) {
             for (QWordH &qw : mQWordsHamm[j][dn]) {
-                qi=min(qi, qw.common_prefix);
                 if (Word::letterDiff(letter_bits, qw.letterBits)<=6) {
-                    int dist = HammingDist(&dtxt, &qw.txt, T+(32*31), &qi);
+                    int dist = HammingDist(dtxt.chars, qw.txt.chars);
                     if (dist<=3) wd->hammMatches[dist].push_back(qw.qwindex);
-                    //qi=qw.common_prefix;
                 }
             }
         }
@@ -390,7 +386,7 @@ void Intersect(long myThreadId)
     }
 }
 
-/** Determine the matches and deliver docs */
+/** Determine the matches and deliver the results */
 void Match(long myThreadId)
 {
     char* qwH = (char*) malloc(mQWHash[MT_HAMMING_DIST-1].size());
@@ -476,13 +472,14 @@ int EditDist(char *ds, int dn, char *qs, unsigned qn, int *T, unsigned *qi)
     return ret;
 }
 
-int HammingDist(WordText *dtxt, WordText *qtxt, int *T, unsigned *qi)
+int HammingDist(char *ds, char *qs)
 {
-    int num_mismatches = *qi? T[*qi-1] : 0;
+    int num_mismatches = 0;
+    int qi=0;
 
-    while(qtxt->chars[*qi]) {
-        if(dtxt->chars[*qi]!=qtxt->chars[*qi]) num_mismatches++;
-        T[(*qi)++]=num_mismatches;
+    while(qs[qi]) {
+        if(ds[qi]!=qs[qi]) num_mismatches++;
+        qi++;
         if (num_mismatches>3) return num_mismatches;
     }
 
