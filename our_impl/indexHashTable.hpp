@@ -51,7 +51,7 @@ public:
         }
         else {
             unsigned numUnits_old=numUnits;
-            capacity = index+8192;
+            capacity = index * 2;
             numUnits = capacity/BITS_PER_UNIT;
             if (capacity%BITS_PER_UNIT) numUnits++;
             capacity = numUnits*BITS_PER_UNIT;

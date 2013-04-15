@@ -11,7 +11,6 @@
 #include <list>
 #include <set>
 
-#define HASH_SIZE    (1<<25)
 #define NUM_THREADS  24
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
@@ -20,7 +19,8 @@ using namespace std;
 
 #include <core.h>
 #include "word.hpp"
-#include "wordHashTable.hpp"
+#include "dfatrie.hpp"
+#include "wordDB.hpp"
 #include "indexHashTable.hpp"
 #include "core.hpp"
 
@@ -35,8 +35,8 @@ static inline int   EditDist (char *ds, int dn, char *qs, unsigned qn, int *T, u
 static inline int   HammingDist (char *dtxt, char *qtxt);
 
 /* Globals */
-static WordHashTable        GWDB(HASH_SIZE);                ///< Here store pointers to  EVERY  single word encountered.
-static IndexHashTable       mBatchWords(HASH_SIZE,1);
+static WordDB               GWDB;                           ///< Here store pointers to  EVERY  single word encountered.
+static IndexHashTable       mBatchWords(1<<13,1);
 
 /* Documents */
 static queue<Document>      mPendingDocs;                   ///< Documents that haven't yet been touched at all.
@@ -46,7 +46,7 @@ static unsigned             mBatchId;
 
 /* Queries */
 static vector<Query>        mActiveQueries;
-static IndexHashTable       mQWHash[2] {IndexHashTable(8192), IndexHashTable(8192)};
+static IndexHashTable       mQWHash[2] {IndexHashTable(1<<13, 0), IndexHashTable(1<<13, 0)};
 static vector<QWordE>       mQWEdit;
 static unsigned             mQWLastEdit;
 static vector<QWMap>        mQWordsHamm;
@@ -109,7 +109,8 @@ ErrorCode DestroyIndex()
         pthread_join(mThreads[t], NULL);
     }
 
-    PrintStats();
+    PrintStats(); fflush(NULL);
+    getchar();
 
     return EC_SUCCESS;
 }
@@ -163,13 +164,12 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     Document newDoc;
     newDoc.id = doc_id;
     newDoc.str = new_doc_str;
-    newDoc.words = new IndexHashTable(HASH_SIZE, 1);
+    newDoc.words = new IndexHashTable(GWDB.size()*2, 1);
     newDoc.matchingQueries = new vector<QueryID>();
 
     pthread_mutex_lock(&mPendingDocs_mutex);
     mPendingDocs.push(newDoc);
     mPhase = PH_01;
-    //~ fprintf(stderr, "Doc %-4u pushed \n", doc_id);fflush(NULL);
     pthread_cond_broadcast(&mPendingDocs_cond);
     pthread_mutex_unlock(&mPendingDocs_mutex);
     return EC_SUCCESS;
@@ -207,7 +207,6 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
     delete res.words;
     free(res.str);
 
-    //~ fprintf(stderr, "Doc %-4u delivered \n", res.id);fflush(NULL);
     pthread_cond_broadcast(&mReadyDocs_cond);
     pthread_mutex_unlock(&mReadyDocs_mutex);
     return EC_SUCCESS;
@@ -333,6 +332,7 @@ void Prepare()
                 //~ s0=s1;
             //~ }
         //~ }
+
     }
     mBatchId++;
     mQWordsHamm.resize(mBatchId+1);

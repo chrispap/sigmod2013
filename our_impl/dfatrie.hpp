@@ -47,21 +47,26 @@ protected:
 class DFATrie : public DFA
 {
 public:
-    bool insertWord (const Word* word) {
+    bool insert (WordText &wtxt,  Word** inserted_word) {
         StateIndex cur=0;
-        for (int i=0 ; word->txt.chars[i] ; i++) {
-            if (states[cur][word->txt.chars[i]] == NO_TRANS) {
-                states[cur].setLetterTransition(word->txt.chars[i], states.size());
+        for (int i=0 ; wtxt.chars[i] ; i++) {
+            if (states[cur][wtxt.chars[i]] == NO_TRANS) {
+                states[cur].setLetterTransition(wtxt.chars[i], states.size());
                 states.emplace_back();
             }
-            cur = states[cur][word->txt.chars[i]];
+            cur = states[cur][wtxt.chars[i]];
         }
         if (states[cur].getPtr()==NULL) {
-            states[cur].setPtr( (void*) word);
+            *inserted_word = new Word (wtxt, num_final_states);
+            states[cur].setPtr( (void*) *inserted_word);
             num_final_states++;
             return true;
         }
-        else return false;
+        else {
+            *inserted_word = (Word*) states[cur].getPtr();
+            return false;
+        }
+
     }
 
     unsigned size () const {
