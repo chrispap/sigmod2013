@@ -25,8 +25,9 @@ public:
      * when the word does not already exist in our storage.
      */
     bool insert (WordText &wtxt, Word** inserted_word) {
-        lock();
+        if (trie.contains(wtxt, inserted_word)) return false;
 
+        lock();
         if (trie.insert(wtxt, inserted_word)) {
             wvec.push_back(*inserted_word);
             unlock();

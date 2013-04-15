@@ -49,7 +49,7 @@ static vector<Query>        mActiveQueries;
 static IndexHashTable       mQWHash[2] {IndexHashTable(1<<13, 0), IndexHashTable(1<<13, 0)};
 static vector<QWordE>       mQWEdit;
 static unsigned             mQWLastEdit;
-static vector<QWMap>        mQWordsHamm;
+static vector<QWMap>        mQWHamm;
 
 /* Threading */
 static volatile PHASE       mPhase;                         ///< Indicates in which phase the threads should be.
@@ -87,7 +87,7 @@ ErrorCode InitializeIndex()
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-    mQWordsHamm.resize(mBatchId+1);
+    mQWHamm.resize(mBatchId+1);
     mPhase = PH_IDLE;
 
     for (long t=0; t< NUM_THREADS; t++) {
@@ -109,7 +109,7 @@ ErrorCode DestroyIndex()
         pthread_join(mThreads[t], NULL);
     }
 
-    PrintStats(); fflush(NULL);
+    //~ PrintStats(); fflush(NULL);
 
     return EC_SUCCESS;
 }
@@ -135,7 +135,7 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
         if (match_type!=MT_EXACT_MATCH && mQWHash[match_type-1].insert(nw->wid)) {
             nw->qwindex[match_type] = mQWHash[match_type-1].size()-1;
             if (match_type==MT_EDIT_DIST) mQWEdit.emplace_back(nw, match_type);
-            else mQWordsHamm[mBatchId][nw->length].emplace_back(nw, match_type);
+            else mQWHamm[mBatchId][nw->length].emplace_back(nw, match_type);
         }
 
         num_words++;
@@ -318,23 +318,11 @@ void Prepare()
     }
     mQWLastEdit = mQWEdit.size();
 
-    for (int len=MIN_WORD_LENGTH; len<=MAX_WORD_LENGTH; len++) {
-        sort (mQWordsHamm[mBatchId][len].begin(), mQWordsHamm[mBatchId][len].end(), ltwh);
-
-        //~ if (mQWordsHamm[mBatchId][len].size()>1) {
-            //~ char *s0 = mQWordsHamm[mBatchId][len][0].txt.chars;
-            //~ for (unsigned j=1; j<mQWordsHamm[mBatchId][len].size() ; j++) {
-                //~ char *s1 = mQWordsHamm[mBatchId][len][j].txt.chars;
-                //~ unsigned i=0;
-                //~ while (s0[i] == s1[i]) i++;
-                //~ mQWordsHamm[mBatchId][len][j].common_prefix = i;
-                //~ s0=s1;
-            //~ }
-        //~ }
-
-    }
+    //~ for (int len=MIN_WORD_LENGTH; len<=MAX_WORD_LENGTH; len++) {
+        //~ sort (mQWHamm[mBatchId][len].begin(), mQWHamm[mBatchId][len].end(), ltwh);
+    //~ }
     mBatchId++;
-    mQWordsHamm.resize(mBatchId+1);
+    mQWHamm.resize(mBatchId+1);
 
     pthread_mutex_lock(&mPendingDocs_mutex);
     if (mPhase!=PH_FINISHED) mPhase=PH_IDLE;
@@ -374,7 +362,7 @@ void Intersect(long myThreadId)
 
         wd->lastCheck_edit = mQWEdit.size();
         for (unsigned j=last_check_hamm ; j<mBatchId ; j++) {
-            for (QWordH &qw : mQWordsHamm[j][dn]) {
+            for (QWordH &qw : mQWHamm[j][dn]) {
                 if (Word::letterDiff(letter_bits, qw.letterBits)<=6) {
                     int dist = HammingDist(dtxt.chars, qw.txt.chars);
                     if (dist<=3) wd->hammMatches[dist].push_back(qw.qwindex);
