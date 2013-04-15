@@ -27,16 +27,16 @@ using namespace std;
 /* Function prototypes */
 //~ static void  PrintStats ();
 static void* Thread (void *param);
-static  void  Prepare ();
-static  void  Match (long thread_id);
-static  void  Intersect (long thread_d);
-static  void  ParseDoc (Document &doc, const long thread_id);
-static  int   EditDist (char *ds, int dn, char *qs, unsigned qn, int *T, unsigned *qi);
-static  int   HammingDist (char *dtxt, char *qtxt);
+static void  Prepare ();
+static void  Match (long thread_id);
+static void  Intersect (long thread_d);
+static void  ParseDoc (Document &doc, const long thread_id);
+static int   EditDist (char *ds, int dn, char *qs, unsigned qn, int *T, unsigned *qi);
+static int   HammingDist (char *dtxt, char *qtxt);
 
 /* Globals */
 static WordDB               GWDB;                           ///< Here store pointers to  EVERY  single word encountered.
-static IndexHashTable       mBatchWords(1,1);
+static IndexHashTable       mBatchWords(1024,1);
 
 /* Documents */
 static queue<Document>      mPendingDocs;                   ///< Documents that haven't yet been touched at all.
@@ -46,7 +46,7 @@ static unsigned             mBatchId;
 
 /* Queries */
 static vector<Query>        mActiveQueries;
-static IndexHashTable       mQWHash[2] {IndexHashTable(10<<12, 0), IndexHashTable(10<<12, 0)};
+static IndexHashTable       mQWHash[2] {IndexHashTable(1024, 0), IndexHashTable(1024, 0)};
 static vector<QWordE>       mQWEdit;
 static unsigned             mQWLastEdit;
 static vector<QWMap>        mQWHamm;
@@ -163,7 +163,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     Document newDoc;
     newDoc.id = doc_id;
     newDoc.str = new_doc_str;
-    newDoc.words = new IndexHashTable(1024, 1);
+    newDoc.words = new IndexHashTable(64, 1);
     newDoc.matchingQueries = new vector<QueryID>();
 
     pthread_mutex_lock(&mPendingDocs_mutex);
