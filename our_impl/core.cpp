@@ -110,7 +110,6 @@ ErrorCode DestroyIndex()
     }
 
     PrintStats(); fflush(NULL);
-    getchar();
 
     return EC_SUCCESS;
 }
