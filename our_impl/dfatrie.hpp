@@ -28,8 +28,6 @@ protected:
     unsigned num_final_states;
 };
 
-#include "word.hpp"
-
 class DFATrie : public DFA
 {
 public:

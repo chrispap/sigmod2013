@@ -39,7 +39,6 @@ struct Word
     }
 
     bool equals(WordText &wtxt) const {
-        //~ return !strcmp(txt.chars, wtxt.chars);
         for (unsigned i=0; i<WUNITS_MAX; i++) if (wtxt.ints[i]!=txt.ints[i]) return false;
         return true;
     }

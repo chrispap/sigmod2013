@@ -46,7 +46,7 @@ static unsigned             mBatchId;
 
 /* Queries */
 static vector<Query>        mActiveQueries;
-static IndexHashTable       mQWHash[2] {IndexHashTable(1<<13, 0), IndexHashTable(1<<13, 0)};
+static IndexHashTable       mQWHash[2] {IndexHashTable(1<<10, 0), IndexHashTable(1<<10, 0)};
 static vector<QWordE>       mQWEdit;
 static unsigned             mQWLastEdit;
 static vector<QWMap>        mQWHamm;
@@ -163,7 +163,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     Document newDoc;
     newDoc.id = doc_id;
     newDoc.str = new_doc_str;
-    newDoc.words = new IndexHashTable(GWDB.size()*2, 1);
+    newDoc.words = new IndexHashTable(0, 1);
     newDoc.matchingQueries = new vector<QueryID>();
 
     pthread_mutex_lock(&mPendingDocs_mutex);
@@ -318,9 +318,9 @@ void Prepare()
     }
     mQWLastEdit = mQWEdit.size();
 
-    //~ for (int len=MIN_WORD_LENGTH; len<=MAX_WORD_LENGTH; len++) {
-        //~ sort (mQWHamm[mBatchId][len].begin(), mQWHamm[mBatchId][len].end(), ltwh);
-    //~ }
+    for (int len=MIN_WORD_LENGTH; len<=MAX_WORD_LENGTH; len++)
+        sort (mQWHamm[mBatchId][len].begin(), mQWHamm[mBatchId][len].end(), ltwh);
+
     mBatchId++;
     mQWHamm.resize(mBatchId+1);
 
