@@ -19,7 +19,7 @@ struct Word
     unsigned            lastCheck_hamm;
 
     int                 qwindex[3];
-    unsigned            gwdbIndex;
+    unsigned            wid;
 
     WordText            txt;
 
@@ -30,7 +30,7 @@ struct Word
         letterBits(0),
         lastCheck_edit(0),
         lastCheck_hamm(0),
-        gwdbIndex(globindex),
+        wid(globindex),
         txt(wtxt)
     {
         unsigned wi;

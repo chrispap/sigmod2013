@@ -11,7 +11,7 @@
 #include <list>
 #include <set>
 
-#define HASH_SIZE    (1<<19)
+#define HASH_SIZE    (1<<25)
 #define NUM_THREADS  24
 
 enum PHASE { PH_IDLE, PH_01, PH_02, PH_FINISHED };
@@ -46,7 +46,7 @@ static unsigned             mBatchId;
 
 /* Queries */
 static vector<Query>        mActiveQueries;
-static IndexHashTable       mQWHash[2];
+static IndexHashTable       mQWHash[2] {IndexHashTable(8192), IndexHashTable(8192)};
 static vector<QWordE>       mQWEdit;
 static unsigned             mQWLastEdit;
 static vector<QWMap>        mQWordsHamm;
@@ -132,7 +132,7 @@ ErrorCode StartQuery(QueryID query_id, const char* query_str, MatchType match_ty
 
         GWDB.insert(wtxt, &nw);
         mActiveQueries[query_id].words[num_words] = nw;
-        if (match_type!=MT_EXACT_MATCH && mQWHash[match_type-1].insert(nw->gwdbIndex)) {
+        if (match_type!=MT_EXACT_MATCH && mQWHash[match_type-1].insert(nw->wid)) {
             nw->qwindex[match_type] = mQWHash[match_type-1].size()-1;
             if (match_type==MT_EDIT_DIST) mQWEdit.emplace_back(nw, match_type);
             else mQWordsHamm[mBatchId][nw->length].emplace_back(nw, match_type);
@@ -297,7 +297,7 @@ void ParseDoc(Document &doc, const long thread_id)
         wtxt.chars[--i] = 0;
 
         GWDB.insert(wtxt, &nw);
-        doc.words->insert(nw->gwdbIndex);
+        doc.words->insert(nw->wid);
 
     } while (*c2);
 
@@ -415,9 +415,13 @@ void Match(long myThreadId)
 
             if (Q.type==MT_EXACT_MATCH)
             {
-                for (int qwi=0 ; qwi<Q.numWords ; qwi++)
-                    if (doc.words->exists(Q.words[qwi]->gwdbIndex)) ++qwc;
+                for (int qwi=0 ; qwi<Q.numWords ; qwi++) {
+
+                    if (doc.words->exists(Q.words[qwi]->wid)) {
+                        ++qwc;
+                    }
                     else break;
+                }
             }
             else
             {

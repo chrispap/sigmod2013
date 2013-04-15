@@ -10,38 +10,18 @@ class State
 public:
     explicit State () :
         trans_letter {
-            NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS,
-            NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS,
-            NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS,
-            NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS,
-            NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS,
-            NO_TRANS },
-        ptr(NULL)
-    {
-
-    }
+            NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS,
+            NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS, NO_TRANS },
+        ptr(NULL) {}
 
     /** Set transition */
-    void setLetterTransition (const char t, StateIndex index) {
-        trans_letter[t-'a'] = index;
-    }
-
-    void setPtr (void* _ptr) {
-        ptr = _ptr;
-    }
+    void setLetterTransition (const char t, StateIndex index) { trans_letter[t-'a'] = index;}
+    void setPtr (void* _ptr) { ptr = _ptr;}
 
     /** Get transition */
-    StateIndex operator[] (const char t) const {
-        return trans_letter[t-'a'];
-    }
-
-    bool isFinal () const {
-        return ptr!=NULL;
-    }
-
-    void* getPtr() const {
-        return ptr;
-    }
+    StateIndex operator[] (const char t) const { return trans_letter[t-'a'];}
+    bool isFinal () const { return ptr!=NULL; }
+    void* getPtr() const { return ptr; }
 
 protected:
     StateIndex trans_letter[26];    /// Suport only letters [a-z]
@@ -51,21 +31,11 @@ protected:
 class DFA
 {
 public:
-    DFA (): num_final_states(0) {
-        states.emplace_back();
-    }
+    DFA (): num_final_states(0) { states.emplace_back();}
 
-    unsigned stateCount () const {
-        return states.size();
-    }
-
-    unsigned finalStateCount() const {
-        return num_final_states;
-    }
-
-    State& operator[] (const int index){
-        return states[index];
-    }
+    unsigned stateCount () const { return states.size();}
+    unsigned finalStateCount() const { return num_final_states;}
+    State& operator[] (const int index) { return states[index];}
 
 protected:
     vector<State> states;

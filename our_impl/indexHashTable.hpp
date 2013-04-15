@@ -36,22 +36,12 @@ public:
     }
 
     bool insert (unsigned index) {
-        if (index>=capacity) {
-            unsigned numUnits_old=numUnits;
-            capacity = index*2;
-            numUnits = capacity/BITS_PER_UNIT;
-            if (capacity%BITS_PER_UNIT) numUnits++;
-            capacity = numUnits*BITS_PER_UNIT;
-            units = (unit*) realloc (units, numUnits*sizeof(unit));
-            for (unsigned i=numUnits_old ; i<numUnits ; i++) units[i]=0;
-        }
-        else {
-            unsigned unit_offs = index / BITS_PER_UNIT;
-            unsigned unit_bit  = index % BITS_PER_UNIT;
-            unit mask = 1L << unit_bit;
-            if (units[unit_offs] & mask) {
-                return false;
-            }
+        unsigned unit_offs = index / BITS_PER_UNIT;
+        unsigned unit_bit  = index % BITS_PER_UNIT;
+        unit mask = 1L << unit_bit;
+
+        if (index<capacity) {
+            if (units[unit_offs] & mask) return false;
             else {
                 units[unit_offs] |= mask;
                 mSize++;
@@ -59,9 +49,23 @@ public:
                 return true;
             }
         }
+        else {
+            unsigned numUnits_old=numUnits;
+            capacity = index+8192;
+            numUnits = capacity/BITS_PER_UNIT;
+            if (capacity%BITS_PER_UNIT) numUnits++;
+            capacity = numUnits*BITS_PER_UNIT;
+            units = (unit*) realloc (units, numUnits*sizeof(unit));
+            for (unsigned i=numUnits_old ; i<numUnits ; i++) units[i]=0;
+            units[unit_offs] |= mask;
+            mSize++;
+            if (keepIndexVec) indexVec.push_back(index);
+            return true;
+        }
+
     }
 
-    bool exists (int index) {
+    bool exists (unsigned index) {
         if (index>=capacity) return false;
         unsigned unit_offs = index / BITS_PER_UNIT;
         unsigned unit_bit  = index % BITS_PER_UNIT;
