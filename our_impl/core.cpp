@@ -59,7 +59,7 @@ static pthread_mutex_t      mPendingDocs_mutex;             ///<
 static pthread_cond_t       mPendingDocs_cond;              ///<
 static pthread_mutex_t      mReadyDocs_mutex;               ///<
 static pthread_cond_t       mReadyDocs_cond;                ///<
-static pthread_barrier_t    mBarrier;						///<
+static pthread_barrier_t    mBarrier;                       ///<
 
 struct LTWE {
     bool operator()(const QWordE &qw1, const QWordE &qw2 ) const {
@@ -109,7 +109,7 @@ ErrorCode DestroyIndex()
         pthread_join(mThreads[t], NULL);
     }
 
-    //~ PrintStats();
+    PrintStats();
 
     return EC_SUCCESS;
 }
@@ -320,8 +320,8 @@ void Prepare()
     }
     mQWLastEdit = mQWEdit.size();
 
-    //~ for (int len=MIN_WORD_LENGTH; len<=MAX_WORD_LENGTH; len++) {
-        //~ sort (mQWordsHamm[mBatchId][len].begin(), mQWordsHamm[mBatchId][len].end(), ltwh);
+    for (int len=MIN_WORD_LENGTH; len<=MAX_WORD_LENGTH; len++) {
+        sort (mQWordsHamm[mBatchId][len].begin(), mQWordsHamm[mBatchId][len].end(), ltwh);
 
         //~ if (mQWordsHamm[mBatchId][len].size()>1) {
             //~ char *s0 = mQWordsHamm[mBatchId][len][0].txt.chars;
@@ -333,7 +333,7 @@ void Prepare()
                 //~ s0=s1;
             //~ }
         //~ }
-    //~ }
+    }
     mBatchId++;
     mQWordsHamm.resize(mBatchId+1);
 
