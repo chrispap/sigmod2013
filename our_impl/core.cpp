@@ -25,18 +25,18 @@ using namespace std;
 #include "core.hpp"
 
 /* Function prototypes */
-//~ static void  PrintStats ();
+static void  PrintStats ();
 static void* Thread (void *param);
-static void  Prepare ();
-static void  Match (long thread_id);
-static void  Intersect (long thread_d);
-static void  ParseDoc (Document &doc, const long thread_id);
-static int   EditDist (char *ds, int dn, char *qs, unsigned qn, int *T, unsigned *qi);
-static int   HammingDist (char *dtxt, char *qtxt);
+static inline void  Prepare ();
+static inline void  Match (long thread_id);
+static inline void  Intersect (long thread_d);
+static inline void  ParseDoc (Document &doc, const long thread_id);
+static inline int   HammingDist (char *dtxt, char *qtxt);
+static inline int   EditDist (char *ds, int dn, char *qs, unsigned qn, int *T, unsigned *qi);
 
 /* Globals */
 static WordDB               GWDB;                           ///< Here store pointers to  EVERY  single word encountered.
-static IndexHashTable       mBatchWords(1024,1);
+static IndexHashTable       mBatchWords(1<<13,1);
 
 /* Documents */
 static queue<Document>      mPendingDocs;                   ///< Documents that haven't yet been touched at all.
@@ -46,7 +46,7 @@ static unsigned             mBatchId;
 
 /* Queries */
 static vector<Query>        mActiveQueries;
-static IndexHashTable       mQWHash[2] {IndexHashTable(1024, 0), IndexHashTable(1024, 0)};
+static IndexHashTable       mQWHash[2] {IndexHashTable(1<<10, 0), IndexHashTable(1<<10, 0)};
 static vector<QWordE>       mQWEdit;
 static unsigned             mQWLastEdit;
 static vector<QWMap>        mQWHamm;
@@ -109,7 +109,7 @@ ErrorCode DestroyIndex()
         pthread_join(mThreads[t], NULL);
     }
 
-    //~ PrintStats(); fflush(NULL);
+    PrintStats(); fflush(NULL);
 
     return EC_SUCCESS;
 }
@@ -163,7 +163,7 @@ ErrorCode MatchDocument(DocID doc_id, const char* doc_str)
     Document newDoc;
     newDoc.id = doc_id;
     newDoc.str = new_doc_str;
-    newDoc.words = new IndexHashTable(64, 1);
+    newDoc.words = new IndexHashTable(0, 1);
     newDoc.matchingQueries = new vector<QueryID>();
 
     pthread_mutex_lock(&mPendingDocs_mutex);
@@ -212,15 +212,15 @@ ErrorCode GetNextAvailRes(DocID* p_doc_id, unsigned int* p_num_res, QueryID** p_
 }
 
 /* Our Functions */
-//~ void PrintStats()
-//~ {
-    //~ fprintf(stdout, "\n=== STATS ================================== BATCH ===================================\n");
-    //~ fprintf(stdout, "GWDB     Exact   Hamming   Edit    |  BatchID   ActiveQueries   batchDocs   batchWords   \n");
-    //~ fprintf(stdout, "%-6u     -     %-7u   %-5u   |  %-7d   %-13lu   %-9lu   %-10u   \n",
-                     //~ GWDB.size(), mQWHash[0].size(), mQWHash[1].size(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size(), mBatchWords.size());
-    //~ fprintf(stdout, "======================================================================================\n");
-    //~ fflush(NULL);
-//~ }
+void PrintStats()
+{
+    fprintf(stdout, "\n=== STATS ================================== BATCH ===================================\n");
+    fprintf(stdout, "GWDB     Exact   Hamming   Edit    |  BatchID   ActiveQueries   batchDocs   batchWords   \n");
+    fprintf(stdout, "%-6u     -     %-7u   %-5u   |  %-7d   %-13lu   %-9lu   %-10u   \n",
+                     GWDB.size(), mQWHash[0].size(), mQWHash[1].size(), mBatchId, (unsigned long) mActiveQueries.size(), (unsigned long) mParsedDocs.size(), mBatchWords.size());
+    fprintf(stdout, "======================================================================================\n");
+    fflush(NULL);
+}
 
 void* Thread(void *param)
 {
