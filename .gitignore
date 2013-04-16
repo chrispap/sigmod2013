@@ -3,9 +3,12 @@
 *.so
 
 testdriver
-var
-log
-big_test.txt
+*_test.txt
 
 *project*
 *settings*
+
+flags
+
+*.tar*
+*.gz*
