@@ -9,6 +9,7 @@ testdriver
 *settings*
 
 flags
-
+var
+log
 *.tar*
 *.gz*
