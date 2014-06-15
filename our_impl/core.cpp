@@ -25,8 +25,8 @@ using namespace std;
 #include "core.hpp"
 
 /* Function prototypes */
-static void  PrintStats ();
-static void* Thread (void *param);
+static void         PrintStats ();
+static void*        Thread (void *param);
 static inline void  Prepare ();
 static inline void  Match (long thread_id);
 static inline void  Intersect (long thread_d);
